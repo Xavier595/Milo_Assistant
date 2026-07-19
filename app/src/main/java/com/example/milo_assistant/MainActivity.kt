@@ -24,19 +24,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MiloScreen()
+            MiloScreen(onSpeak = {})
         }
     }
 }
 
 @Composable
-private fun MiloScreen() {
+private fun MiloScreen(onSpeak: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -70,6 +71,11 @@ private fun MiloScreen() {
                 color = Color(0xFF77838E),
                 fontSize = 14.sp
             )
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(onClick = onSpeak) {
+                Text(text = "Hablar")
+            }
         }
     }
 }
@@ -115,5 +121,5 @@ private fun MiloEye() {
 )
 @Composable
 private fun MiloScreenPreview() {
-    MiloScreen()
+    MiloScreen(onSpeak = {})
 }
