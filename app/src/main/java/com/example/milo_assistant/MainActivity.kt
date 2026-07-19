@@ -55,6 +55,8 @@ private fun MiloScreen() {
                 MiloEye()
             }
             Spacer(modifier = Modifier.height(30.dp))
+            MiloMouth()
+            Spacer(modifier = Modifier.height(30.dp))
             Text(
                 text = "MILO",
                 color = Color(0xFF9FE7FF),
@@ -70,6 +72,19 @@ private fun MiloScreen() {
             )
         }
     }
+}
+
+@Composable
+private fun MiloMouth() {
+    Box(
+        modifier = Modifier
+            .size(
+                width = 48.dp,
+                height = 6.dp
+            )
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF9FE7FF))
+    )
 }
 
 @Composable
