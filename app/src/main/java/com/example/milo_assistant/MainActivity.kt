@@ -24,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.Button
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.compose.runtime.getValue
@@ -113,9 +112,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             MiloScreen(
                 statusText = statusText,
                 isSpeaking = isSpeaking,
-                mouthPulse = mouthPulse,
-                isSpeakEnabled = isTtsReady && !isSpeaking,
-                onSpeak = ::speakNextPhrase
+                mouthPulse = mouthPulse
             )
         }
         if (hasMicrophonePermission) {
@@ -381,9 +378,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 private fun MiloScreen(
     statusText: String,
     isSpeaking: Boolean,
-    mouthPulse: Int,
-    isSpeakEnabled: Boolean,
-    onSpeak: () -> Unit
+    mouthPulse: Int
 ) {
     Box(
         modifier = Modifier
@@ -421,14 +416,6 @@ private fun MiloScreen(
                 color = Color(0xFF77838E),
                 fontSize = 14.sp
             )
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = onSpeak,
-                enabled = isSpeakEnabled
-            ) {
-                Text(text = "Hablar")
-            }
         }
     }
 }
@@ -523,8 +510,6 @@ private fun MiloScreenPreview() {
     MiloScreen(
         statusText = "En espera",
         isSpeaking = false,
-        mouthPulse = 0,
-        isSpeakEnabled = true,
-        onSpeak = {}
+        mouthPulse = 0
     )
 }
