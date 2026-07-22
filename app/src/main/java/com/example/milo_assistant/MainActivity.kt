@@ -36,9 +36,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.delay
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
+    private var hasMicrophonePermission by mutableStateOf(false)
     private var isTtsReady by mutableStateOf(false)
     private var isSpeaking by mutableStateOf(false)
     private var statusText by mutableStateOf("Preparando voz...")
@@ -51,8 +56,23 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         "Poco a poco aprenderé cosas nuevas.",
         "Gracias por hablar conmigo."
     )
+
+    private val microphonePermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            hasMicrophonePermission = granted
+
+            statusText = if (granted) {
+                "Micrófono preparado"
+            } else {
+                "Permiso de micrófono necesario"
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        hasMicrophonePermission = hasRecordAudioPermission()
         textToSpeech = TextToSpeech(this, this)
         setContent {
             MiloScreen(
@@ -61,6 +81,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 mouthPulse = mouthPulse,
                 isSpeakEnabled = isTtsReady && !isSpeaking,
                 onSpeak = ::speakNextPhrase
+            )
+        }
+        if (!hasMicrophonePermission) {
+            microphonePermissionLauncher.launch(
+                Manifest.permission.RECORD_AUDIO
             )
         }
     }
@@ -89,7 +114,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         configureSpeechListener()
 
         isTtsReady = true
-        statusText = "En espera"
+
+        statusText = if (hasMicrophonePermission) {
+            "Micrófono preparado"
+        } else {
+            "Permiso de micrófono necesario"
+        }
     }
     private fun configureSpeechListener() {
         textToSpeech.setOnUtteranceProgressListener(
@@ -153,6 +183,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             statusText = "Error al hablar"
         }
     }
+
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     override fun onDestroy() {
         if (::textToSpeech.isInitialized) {
             textToSpeech.stop()
