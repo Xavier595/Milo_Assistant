@@ -40,12 +40,18 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import android.content.Intent
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
+    private var speechRecognizer: SpeechRecognizer? = null
     private var hasMicrophonePermission by mutableStateOf(false)
     private var isTtsReady by mutableStateOf(false)
     private var isSpeaking by mutableStateOf(false)
+    private var isListening by mutableStateOf(false)
     private var statusText by mutableStateOf("Preparando voz...")
     private var mouthPulse by mutableStateOf(0)
     private var phraseIndex = 0
@@ -57,16 +63,45 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         "Gracias por hablar conmigo."
     )
 
+    private val recognitionIntent by lazy {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+            )
+
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE,
+                "es-ES"
+            )
+
+            putExtra(
+                RecognizerIntent.EXTRA_MAX_RESULTS,
+                5
+            )
+
+            putExtra(
+                RecognizerIntent.EXTRA_PARTIAL_RESULTS,
+                false
+            )
+
+        }
+    }
+
     private val microphonePermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { granted ->
             hasMicrophonePermission = granted
 
-            statusText = if (granted) {
-                "Micrófono preparado"
+            if (granted) {
+                initializeSpeechRecognizer()
+
+                if (isTtsReady) {
+                    startListeningForMilo()
+                }
             } else {
-                "Permiso de micrófono necesario"
+                statusText = "Permiso de micrófono necesario"
             }
         }
 
@@ -83,7 +118,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 onSpeak = ::speakNextPhrase
             )
         }
-        if (!hasMicrophonePermission) {
+        if (hasMicrophonePermission) {
+            initializeSpeechRecognizer()
+        } else {
             microphonePermissionLauncher.launch(
                 Manifest.permission.RECORD_AUDIO
             )
@@ -115,10 +152,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         isTtsReady = true
 
-        statusText = if (hasMicrophonePermission) {
-            "Micrófono preparado"
+        if (hasMicrophonePermission) {
+            initializeSpeechRecognizer()
+            startListeningForMilo()
         } else {
-            "Permiso de micrófono necesario"
+            statusText = "Permiso de micrófono necesario"
         }
     }
     private fun configureSpeechListener() {
@@ -162,10 +200,131 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
         )
     }
+
+    private fun initializeSpeechRecognizer() {
+        if (speechRecognizer != null || !hasMicrophonePermission) {
+            return
+        }
+
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            statusText = "Reconocimiento de voz no disponible"
+            return
+        }
+
+        speechRecognizer = SpeechRecognizer
+            .createSpeechRecognizer(this)
+            .apply {
+                setRecognitionListener(
+                    createRecognitionListener()
+                )
+            }
+    }
+
+    private fun createRecognitionListener(): RecognitionListener {
+        return object : RecognitionListener {
+
+            override fun onReadyForSpeech(params: Bundle?) {
+                isListening = true
+                statusText = "Escuchando..."
+            }
+
+            override fun onBeginningOfSpeech() {
+                statusText = "Escuchando..."
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+            }
+
+            override fun onBufferReceived(buffer: ByteArray?) {
+            }
+
+            override fun onEndOfSpeech() {
+                statusText = "Procesando..."
+            }
+
+            override fun onError(error: Int) {
+                isListening = false
+
+                if (!isSpeaking) {
+                    statusText = "No se ha reconocido ninguna frase"
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                isListening = false
+
+                val recognizedTexts = results
+                    ?.getStringArrayList(
+                        SpeechRecognizer.RESULTS_RECOGNITION
+                    )
+                    .orEmpty()
+
+                val firstResult = recognizedTexts.firstOrNull()
+
+                statusText = if (firstResult != null) {
+                    "He oído: $firstResult"
+                } else {
+                    "No he entendido"
+                }
+            }
+
+            override fun onPartialResults(
+                partialResults: Bundle?
+            ) {
+            }
+
+            override fun onEvent(
+                eventType: Int,
+                params: Bundle?
+            ) {
+            }
+        }
+    }
+
+    private fun startListeningForMilo() {
+        if (
+            !hasMicrophonePermission ||
+            !isTtsReady ||
+            isSpeaking ||
+            isListening
+        ) {
+            return
+        }
+
+        initializeSpeechRecognizer()
+
+        val recognizer = speechRecognizer ?: return
+
+        try {
+            isListening = true
+            statusText = "Escuchando..."
+
+            recognizer.startListening(
+                recognitionIntent
+            )
+        } catch (_: SecurityException) {
+            isListening = false
+            statusText = "Permiso de micrófono necesario"
+        } catch (_: RuntimeException) {
+            isListening = false
+            statusText = "No se pudo iniciar la escucha"
+        }
+    }
+
+    private fun stopListeningForMilo() {
+        if (isListening) {
+            speechRecognizer?.cancel()
+            isListening = false
+        }
+    }
+
     private fun speakNextPhrase() {
         if (!isTtsReady || isSpeaking) {
             return
         }
+        isSpeaking = true
+        statusText = "Hablando..."
+        stopListeningForMilo()
 
         val phrase = phrases[phraseIndex]
 
@@ -191,12 +350,19 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    override fun onStop() {
+        stopListeningForMilo()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        speechRecognizer?.cancel()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         if (::textToSpeech.isInitialized) {
             textToSpeech.stop()
             textToSpeech.shutdown()
         }
-
         super.onDestroy()
     }
 
