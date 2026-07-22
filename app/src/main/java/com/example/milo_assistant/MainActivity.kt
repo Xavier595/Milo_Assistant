@@ -43,10 +43,21 @@ import android.content.Intent
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.os.Handler
+import android.os.Looper
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
     private var speechRecognizer: SpeechRecognizer? = null
+    private val mainHandler = Handler(
+        Looper.getMainLooper()
+    )
+
+    private val restartListeningRunnable = Runnable {
+        startListeningForMilo()
+    }
+
+    private var isActivityVisible = false
     private var hasMicrophonePermission by mutableStateOf(false)
     private var isTtsReady by mutableStateOf(false)
     private var isSpeaking by mutableStateOf(false)
@@ -95,10 +106,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             if (granted) {
                 initializeSpeechRecognizer()
-
-                if (isTtsReady) {
-                    startListeningForMilo()
-                }
+                statusText = "Esperando a que digas Milo..."
+                scheduleListeningRestart()
             } else {
                 statusText = "Permiso de micrófono necesario"
             }
@@ -151,7 +160,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         if (hasMicrophonePermission) {
             initializeSpeechRecognizer()
-            startListeningForMilo()
+            statusText = "Esperando a que digas Milo..."
+            scheduleListeningRestart()
         } else {
             statusText = "Permiso de micrófono necesario"
         }
@@ -184,7 +194,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 override fun onDone(utteranceId: String?) {
                     runOnUiThread {
                         isSpeaking = false
-                        statusText = "En espera"
+                        statusText = "Esperando a que digas Milo..."
+
+                        scheduleListeningRestart(
+                            delayMillis = 350L
+                        )
                     }
                 }
 
@@ -192,6 +206,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     runOnUiThread {
                         isSpeaking = false
                         statusText = "Error al hablar"
+
+                        scheduleListeningRestart(
+                            delayMillis = 700L
+                        )
                     }
                 }
             }
@@ -242,8 +260,39 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 isListening = false
 
-                if (!isSpeaking) {
-                    statusText = "No se ha reconocido ninguna frase"
+                if (isSpeaking || !isActivityVisible) {
+                    return
+                }
+
+                when (error) {
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                        statusText = "Permiso de micrófono necesario"
+                    }
+
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        statusText = "Reconocedor ocupado"
+
+                        scheduleListeningRestart(
+                            delayMillis = 1_000L
+                        )
+                    }
+
+                    SpeechRecognizer.ERROR_NETWORK,
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
+                        statusText = "Error de red al escuchar"
+
+                        scheduleListeningRestart(
+                            delayMillis = 1_000L
+                        )
+                    }
+
+                    else -> {
+                        statusText = "Esperando a que digas Milo..."
+
+                        scheduleListeningRestart(
+                            delayMillis = 500L
+                        )
+                    }
                 }
             }
 
@@ -264,7 +313,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     statusText = "Milo detectado"
                     speakNextPhrase()
                 } else {
-                    statusText = "No he oído Milo"
+                    statusText = "Esperando a que digas Milo..."
+
+                    scheduleListeningRestart(
+                        delayMillis = 400L
+                    )
                 }
             }
 
@@ -283,6 +336,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private fun startListeningForMilo() {
         if (
+            !isActivityVisible ||
             !hasMicrophonePermission ||
             !isTtsReady ||
             isSpeaking ||
@@ -297,7 +351,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         try {
             isListening = true
-            statusText = "Escuchando..."
+            statusText = "Esperando a que digas Milo..."
 
             recognizer.startListening(
                 recognitionIntent
@@ -308,14 +362,44 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         } catch (_: RuntimeException) {
             isListening = false
             statusText = "No se pudo iniciar la escucha"
+
+            scheduleListeningRestart(
+                delayMillis = 1_000L
+            )
         }
     }
 
     private fun stopListeningForMilo() {
+        mainHandler.removeCallbacks(
+            restartListeningRunnable
+        )
+
         if (isListening) {
             speechRecognizer?.cancel()
             isListening = false
         }
+    }
+
+    private fun scheduleListeningRestart(
+        delayMillis: Long = 300L
+    ) {
+        mainHandler.removeCallbacks(
+            restartListeningRunnable
+        )
+
+        if (
+            !isActivityVisible ||
+            !hasMicrophonePermission ||
+            !isTtsReady ||
+            isSpeaking
+        ) {
+            return
+        }
+
+        mainHandler.postDelayed(
+            restartListeningRunnable,
+            delayMillis
+        )
     }
 
     private fun speakNextPhrase() {
@@ -340,6 +424,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (result == TextToSpeech.ERROR) {
             isSpeaking = false
             statusText = "Error al hablar"
+
+            scheduleListeningRestart(
+                delayMillis = 700L
+            )
         }
     }
 
@@ -350,12 +438,29 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    override fun onStart() {
+        super.onStart()
+
+        isActivityVisible = true
+        scheduleListeningRestart()
+    }
+
     override fun onStop() {
+        isActivityVisible = false
+
+        mainHandler.removeCallbacks(
+            restartListeningRunnable
+        )
+
         stopListeningForMilo()
+
         super.onStop()
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(
+            restartListeningRunnable
+        )
         speechRecognizer?.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
