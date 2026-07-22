@@ -259,12 +259,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     )
                     .orEmpty()
 
-                val firstResult = recognizedTexts.firstOrNull()
+                val heardMilo = recognizedTexts.any { text ->
+                    MILO_WORD.containsMatchIn(text)
+                }
 
-                statusText = if (firstResult != null) {
-                    "He oído: $firstResult"
+                if (heardMilo) {
+                    statusText = "Milo detectado"
+                    speakNextPhrase()
                 } else {
-                    "No he entendido"
+                    statusText = "No he oído Milo"
                 }
             }
 
@@ -366,6 +369,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onDestroy()
     }
 
+    private companion object {
+        val MILO_WORD = Regex(
+            pattern = "\\bmilo\\b",
+            option = RegexOption.IGNORE_CASE
+        )
+    }
 }
 
 @Composable
