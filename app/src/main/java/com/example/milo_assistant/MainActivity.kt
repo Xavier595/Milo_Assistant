@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var isListening by mutableStateOf(false)
     private var statusText by mutableStateOf("Preparando voz...")
     private var mouthPulse by mutableStateOf(0)
+    private var lastCommand by mutableStateOf<String?>(null)
     private var phraseIndex = 0
 
     private val phrases = listOf(
@@ -121,7 +122,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             MiloScreen(
                 statusText = statusText,
                 isSpeaking = isSpeaking,
-                mouthPulse = mouthPulse
+                mouthPulse = mouthPulse,
+                lastCommand = lastCommand
             )
         }
         if (hasMicrophonePermission) {
@@ -483,7 +485,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 private fun MiloScreen(
     statusText: String,
     isSpeaking: Boolean,
-    mouthPulse: Int
+    mouthPulse: Int,
+    lastCommand: String?
 ) {
     Box(
         modifier = Modifier
@@ -521,6 +524,23 @@ private fun MiloScreen(
                 color = Color(0xFF77838E),
                 fontSize = 14.sp
             )
+            lastCommand?.let { command ->
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = "Última orden",
+                    color = Color(0xFF77838E),
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = command,
+                    color = Color(0xFF9FE7FF),
+                    fontSize = 16.sp
+                )
+            }
         }
     }
 }
@@ -615,6 +635,7 @@ private fun MiloScreenPreview() {
     MiloScreen(
         statusText = "En espera",
         isSpeaking = false,
-        mouthPulse = 0
+        mouthPulse = 0,
+        lastCommand = "abre Youtube"
     )
 }
