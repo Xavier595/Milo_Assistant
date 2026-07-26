@@ -459,6 +459,24 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onStop()
     }
 
+    private fun extractCommandAfterMilo(
+        recognizedText: String
+    ): String? {
+        val miloMatch = MILO_WORD.find(recognizedText)
+            ?: return null
+
+        val command = recognizedText
+            .substring(miloMatch.range.last + 1)
+            .trim { character ->
+                character.isWhitespace() ||
+                        character in ",.:;-!?¿¡"
+            }
+
+        return command.ifBlank {
+            null
+        }
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacks(
             restartListeningRunnable
