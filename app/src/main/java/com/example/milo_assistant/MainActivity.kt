@@ -196,10 +196,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 override fun onDone(utteranceId: String?) {
                     runOnUiThread {
                         isSpeaking = false
-                        statusText = "Esperando a que digas Milo..."
+                        statusText = "Esperando..."
 
                         scheduleListeningRestart(
-                            delayMillis = 350L
+                            delayMillis = 700L
                         )
                     }
                 }
@@ -210,7 +210,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         statusText = "Error al hablar"
 
                         scheduleListeningRestart(
-                            delayMillis = 700L
+                            delayMillis = 1_000L
                         )
                     }
                 }
@@ -262,6 +262,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 isListening = false
 
+                /*
+                 * No reiniciamos el micrófono mientras Milo habla
+                 * ni cuando la aplicación ya no está visible.
+                 */
                 if (isSpeaking || !isActivityVisible) {
                     return
                 }
@@ -272,7 +276,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     }
 
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                        statusText = "Reconocedor ocupado"
+                        statusText = "Reiniciando escucha..."
 
                         scheduleListeningRestart(
                             delayMillis = 1_000L
@@ -284,15 +288,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         statusText = "Error de red al escuchar"
 
                         scheduleListeningRestart(
-                            delayMillis = 1_000L
+                            delayMillis = 1_500L
                         )
                     }
 
                     else -> {
-                        statusText = "Esperando a que digas Milo..."
+                        statusText = "Di Milo seguido de una orden"
 
                         scheduleListeningRestart(
-                            delayMillis = 500L
+                            delayMillis = 800L
                         )
                     }
                 }
@@ -433,7 +437,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             statusText = "Error al hablar"
 
             scheduleListeningRestart(
-                delayMillis = 700L
+                delayMillis = 1000L
             )
         }
     }
