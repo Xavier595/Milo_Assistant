@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var isListening by mutableStateOf(false)
     private var statusText by mutableStateOf("Preparando voz...")
     private var mouthPulse by mutableStateOf(0)
+    private var lastCommand by mutableStateOf<String?>(null)
     private var phraseIndex = 0
 
     private val phrases = listOf(
@@ -121,7 +122,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             MiloScreen(
                 statusText = statusText,
                 isSpeaking = isSpeaking,
-                mouthPulse = mouthPulse
+                mouthPulse = mouthPulse,
+                lastCommand = lastCommand
             )
         }
         if (hasMicrophonePermission) {
@@ -194,10 +196,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 override fun onDone(utteranceId: String?) {
                     runOnUiThread {
                         isSpeaking = false
-                        statusText = "Esperando a que digas Milo..."
+                        statusText = "Esperando..."
 
                         scheduleListeningRestart(
-                            delayMillis = 350L
+                            delayMillis = 700L
                         )
                     }
                 }
@@ -208,7 +210,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         statusText = "Error al hablar"
 
                         scheduleListeningRestart(
-                            delayMillis = 700L
+                            delayMillis = 1_000L
                         )
                     }
                 }
@@ -260,6 +262,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 isListening = false
 
+                /*
+                 * No reiniciamos el micrófono mientras Milo habla
+                 * ni cuando la aplicación ya no está visible.
+                 */
                 if (isSpeaking || !isActivityVisible) {
                     return
                 }
@@ -270,7 +276,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     }
 
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                        statusText = "Reconocedor ocupado"
+                        statusText = "Reiniciando escucha..."
 
                         scheduleListeningRestart(
                             delayMillis = 1_000L
@@ -282,15 +288,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         statusText = "Error de red al escuchar"
 
                         scheduleListeningRestart(
-                            delayMillis = 1_000L
+                            delayMillis = 1_500L
                         )
                     }
 
                     else -> {
-                        statusText = "Esperando a que digas Milo..."
+                        statusText = "Di Milo seguido de una orden"
 
                         scheduleListeningRestart(
-                            delayMillis = 500L
+                            delayMillis = 800L
                         )
                     }
                 }
@@ -305,18 +311,23 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     )
                     .orEmpty()
 
-                val heardMilo = recognizedTexts.any { text ->
-                    MILO_WORD.containsMatchIn(text)
-                }
+                val capturedCommand = recognizedTexts
+                    .asSequence()
+                    .mapNotNull { recognizedText ->
+                        extractCommandAfterMilo(recognizedText)
+                    }
+                    .firstOrNull()
 
-                if (heardMilo) {
-                    statusText = "Milo detectado"
+                if (capturedCommand != null) {
+                    lastCommand = capturedCommand
+                    statusText = "Orden guardada"
+
                     speakNextPhrase()
                 } else {
-                    statusText = "Esperando a que digas Milo..."
+                    statusText = "Di Milo seguido de una orden"
 
                     scheduleListeningRestart(
-                        delayMillis = 400L
+                        delayMillis = 700L
                     )
                 }
             }
@@ -426,7 +437,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             statusText = "Error al hablar"
 
             scheduleListeningRestart(
-                delayMillis = 700L
+                delayMillis = 1000L
             )
         }
     }
@@ -457,6 +468,24 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onStop()
     }
 
+    private fun extractCommandAfterMilo(
+        recognizedText: String
+    ): String? {
+        val miloMatch = MILO_WORD.find(recognizedText)
+            ?: return null
+
+        val command = recognizedText
+            .substring(miloMatch.range.last + 1)
+            .trim { character ->
+                character.isWhitespace() ||
+                        character in ",.:;-!?¿¡"
+            }
+
+        return command.ifBlank {
+            null
+        }
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacks(
             restartListeningRunnable
@@ -483,7 +512,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 private fun MiloScreen(
     statusText: String,
     isSpeaking: Boolean,
-    mouthPulse: Int
+    mouthPulse: Int,
+    lastCommand: String?
 ) {
     Box(
         modifier = Modifier
@@ -521,6 +551,23 @@ private fun MiloScreen(
                 color = Color(0xFF77838E),
                 fontSize = 14.sp
             )
+            lastCommand?.let { command ->
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = "Última orden",
+                    color = Color(0xFF77838E),
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = command,
+                    color = Color(0xFF9FE7FF),
+                    fontSize = 16.sp
+                )
+            }
         }
     }
 }
@@ -615,6 +662,7 @@ private fun MiloScreenPreview() {
     MiloScreen(
         statusText = "En espera",
         isSpeaking = false,
-        mouthPulse = 0
+        mouthPulse = 0,
+        lastCommand = "abre Youtube"
     )
 }
