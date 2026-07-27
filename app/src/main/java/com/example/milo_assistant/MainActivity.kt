@@ -307,18 +307,23 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     )
                     .orEmpty()
 
-                val heardMilo = recognizedTexts.any { text ->
-                    MILO_WORD.containsMatchIn(text)
-                }
+                val capturedCommand = recognizedTexts
+                    .asSequence()
+                    .mapNotNull { recognizedText ->
+                        extractCommandAfterMilo(recognizedText)
+                    }
+                    .firstOrNull()
 
-                if (heardMilo) {
-                    statusText = "Milo detectado"
+                if (capturedCommand != null) {
+                    lastCommand = capturedCommand
+                    statusText = "Orden guardada"
+
                     speakNextPhrase()
                 } else {
-                    statusText = "Esperando a que digas Milo..."
+                    statusText = "Di Milo seguido de una orden"
 
                     scheduleListeningRestart(
-                        delayMillis = 400L
+                        delayMillis = 700L
                     )
                 }
             }
