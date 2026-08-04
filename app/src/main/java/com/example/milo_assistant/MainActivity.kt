@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var statusText by mutableStateOf("Preparando voz...")
     private var mouthPulse by mutableStateOf(0)
     private var lastCommand by mutableStateOf<String?>(null)
+    private var commandResultText by mutableStateOf<String?>(null)
     private var phraseIndex = 0
 
     private val phrases = listOf(
@@ -123,7 +124,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 statusText = statusText,
                 isSpeaking = isSpeaking,
                 mouthPulse = mouthPulse,
-                lastCommand = lastCommand
+                lastCommand = lastCommand,
+                commandResultText = commandResultText
             )
         }
         if (hasMicrophonePermission) {
@@ -513,7 +515,8 @@ private fun MiloScreen(
     statusText: String,
     isSpeaking: Boolean,
     mouthPulse: Int,
-    lastCommand: String?
+    lastCommand: String?,
+    commandResultText: String?
 ) {
     Box(
         modifier = Modifier
@@ -565,6 +568,23 @@ private fun MiloScreen(
                 Text(
                     text = command,
                     color = Color(0xFF9FE7FF),
+                    fontSize = 16.sp
+                )
+            }
+            commandResultText?.let { result ->
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Resultado",
+                    color = Color(0xFF77838E),
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = result,
+                    color = Color(0xFFE1F8FF),
                     fontSize = 16.sp
                 )
             }
@@ -663,6 +683,7 @@ private fun MiloScreenPreview() {
         statusText = "En espera",
         isSpeaking = false,
         mouthPulse = 0,
-        lastCommand = "abre Youtube"
+        lastCommand = "abre Youtube",
+        commandResultText = "Abriendo YouTube"
     )
 }
