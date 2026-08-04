@@ -1,5 +1,7 @@
 package com.example.milo_assistant
 
+import java.text.Normalizer
+import java.util.Calendar
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -275,10 +277,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 isListening = false
 
-                /*
-                 * No reiniciamos el micrófono mientras Milo habla
-                 * ni cuando la aplicación ya no está visible.
-                 */
                 if (isSpeaking || !isActivityVisible) {
                     return
                 }
@@ -333,9 +331,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
                 if (capturedCommand != null) {
                     lastCommand = capturedCommand
-                    statusText = "Orden guardada"
+                    commandResultText = null
+                    statusText = "Ejecutando orden..."
 
-                    speakNextPhrase()
+                    executeCommand(capturedCommand)
                 } else {
                     statusText = "Di Milo seguido de una orden"
 
@@ -494,6 +493,123 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         stopListeningForMilo()
 
         super.onStop()
+    }
+
+    private fun normalizeCommand(
+        command: String
+    ): String {
+        return Normalizer
+            .normalize(
+                command.lowercase(Locale.ROOT),
+                Normalizer.Form.NFD
+            )
+            .replace(
+                "\\p{M}+".toRegex(),
+                ""
+            )
+            .replace(
+                "[¿?¡!.,;:]".toRegex(),
+                ""
+            )
+            .replace(
+                "\\s+".toRegex(),
+                " "
+            )
+            .trim()
+    }
+
+    private fun isTimeCommand(
+        command: String
+    ): Boolean {
+        return command in setOf(
+            "dime la hora",
+            "que hora es",
+            "dime que hora es"
+        )
+    }
+
+    private fun isGreetingCommand(
+        command: String
+    ): Boolean {
+        return command in setOf(
+            "saluda",
+            "saludame",
+            "dime algo",
+            "di una frase",
+            "presentate",
+            "di hola"
+        )
+    }
+
+    private fun tellCurrentTime() {
+        val calendar = Calendar.getInstance()
+
+        val hour = calendar.get(
+            Calendar.HOUR_OF_DAY
+        )
+
+        val minute = calendar.get(
+            Calendar.MINUTE
+        )
+
+        val formattedTime = String.format(
+            Locale.ROOT,
+            "%02d:%02d",
+            hour,
+            minute
+        )
+
+        commandResultText = "Hora actual: $formattedTime"
+
+        val spokenTime = when {
+            hour == 1 && minute == 0 -> {
+                "Es la una en punto"
+            }
+
+            hour == 1 -> {
+                "Es la una y $minute"
+            }
+
+            minute == 0 -> {
+                "Son las $hour en punto"
+            }
+
+            else -> {
+                "Son las $hour y $minute"
+            }
+        }
+
+        speakText(spokenTime)
+    }
+
+    private fun executeCommand(
+        command: String
+    ) {
+        val normalizedCommand = normalizeCommand(
+            command
+        )
+
+        when {
+            isTimeCommand(normalizedCommand) -> {
+                tellCurrentTime()
+            }
+
+            isGreetingCommand(normalizedCommand) -> {
+                commandResultText =
+                    "Milo ha pronunciado una frase"
+
+                speakNextPhrase()
+            }
+
+            else -> {
+                commandResultText =
+                    "Orden todavía no compatible"
+
+                speakText(
+                    "Todavía no sé ejecutar esa orden"
+                )
+            }
+        }
     }
 
     private fun extractCommandAfterMilo(
