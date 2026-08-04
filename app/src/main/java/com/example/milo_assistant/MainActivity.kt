@@ -49,6 +49,7 @@ import android.os.Looper
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
     private var speechRecognizer: SpeechRecognizer? = null
+    private var pendingActionAfterSpeech: (() -> Unit)? = null
     private val mainHandler = Handler(
         Looper.getMainLooper()
     )
@@ -197,19 +198,29 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
                 override fun onDone(utteranceId: String?) {
                     runOnUiThread {
-                        isSpeaking = false
-                        statusText = "Esperando..."
+                        val action = pendingActionAfterSpeech
+                        pendingActionAfterSpeech = null
 
-                        scheduleListeningRestart(
-                            delayMillis = 700L
-                        )
+                        isSpeaking = false
+
+                        if (action != null) {
+                            statusText = "Completando orden..."
+                            action()
+                        } else {
+                            statusText = "Di Milo seguido de una orden"
+
+                            scheduleListeningRestart(
+                                delayMillis = 700L
+                            )
+                        }
                     }
                 }
 
                 override fun onError(utteranceId: String?) {
                     runOnUiThread {
+                        pendingActionAfterSpeech = null
                         isSpeaking = false
-                        statusText = "Error al hablar"
+                        statusText = "Error"
 
                         scheduleListeningRestart(
                             delayMillis = 1_000L
@@ -419,27 +430,42 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (!isTtsReady || isSpeaking) {
             return
         }
-        isSpeaking = true
-        statusText = "Hablando..."
-        stopListeningForMilo()
 
         val phrase = phrases[phraseIndex]
 
         phraseIndex = (phraseIndex + 1) % phrases.size
 
+        speakText(phrase)
+    }
+
+    private fun speakText(
+        text: String,
+        afterSpeech: (() -> Unit)? = null
+    ) {
+        if (!isTtsReady || isSpeaking) {
+            return
+        }
+
+        pendingActionAfterSpeech = afterSpeech
+        isSpeaking = true
+        statusText = "Hablando..."
+
+        stopListeningForMilo()
+
         val result = textToSpeech.speak(
-            phrase,
+            text,
             TextToSpeech.QUEUE_FLUSH,
             null,
             "milo-${System.currentTimeMillis()}"
         )
 
         if (result == TextToSpeech.ERROR) {
+            pendingActionAfterSpeech = null
             isSpeaking = false
             statusText = "Error al hablar"
 
             scheduleListeningRestart(
-                delayMillis = 1000L
+                delayMillis = 1_000L
             )
         }
     }
