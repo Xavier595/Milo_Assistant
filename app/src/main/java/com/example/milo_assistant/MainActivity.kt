@@ -1,6 +1,9 @@
 package com.example.milo_assistant
 
+import java.text.Normalizer
+import java.util.Calendar
 import android.os.Bundle
+import android.content.ActivityNotFoundException
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -49,6 +52,7 @@ import android.os.Looper
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
     private var speechRecognizer: SpeechRecognizer? = null
+    private var pendingActionAfterSpeech: (() -> Unit)? = null
     private val mainHandler = Handler(
         Looper.getMainLooper()
     )
@@ -65,6 +69,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var statusText by mutableStateOf("Preparando voz...")
     private var mouthPulse by mutableStateOf(0)
     private var lastCommand by mutableStateOf<String?>(null)
+    private var commandResultText by mutableStateOf<String?>(null)
     private var phraseIndex = 0
 
     private val phrases = listOf(
@@ -123,7 +128,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 statusText = statusText,
                 isSpeaking = isSpeaking,
                 mouthPulse = mouthPulse,
-                lastCommand = lastCommand
+                lastCommand = lastCommand,
+                commandResultText = commandResultText
             )
         }
         if (hasMicrophonePermission) {
@@ -195,19 +201,29 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
                 override fun onDone(utteranceId: String?) {
                     runOnUiThread {
-                        isSpeaking = false
-                        statusText = "Esperando..."
+                        val action = pendingActionAfterSpeech
+                        pendingActionAfterSpeech = null
 
-                        scheduleListeningRestart(
-                            delayMillis = 700L
-                        )
+                        isSpeaking = false
+
+                        if (action != null) {
+                            statusText = "Completando orden..."
+                            action()
+                        } else {
+                            statusText = "Di Milo seguido de una orden"
+
+                            scheduleListeningRestart(
+                                delayMillis = 700L
+                            )
+                        }
                     }
                 }
 
                 override fun onError(utteranceId: String?) {
                     runOnUiThread {
+                        pendingActionAfterSpeech = null
                         isSpeaking = false
-                        statusText = "Error al hablar"
+                        statusText = "Error"
 
                         scheduleListeningRestart(
                             delayMillis = 1_000L
@@ -262,10 +278,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             override fun onError(error: Int) {
                 isListening = false
 
-                /*
-                 * No reiniciamos el micrófono mientras Milo habla
-                 * ni cuando la aplicación ya no está visible.
-                 */
                 if (isSpeaking || !isActivityVisible) {
                     return
                 }
@@ -320,9 +332,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
                 if (capturedCommand != null) {
                     lastCommand = capturedCommand
-                    statusText = "Orden guardada"
+                    commandResultText = null
+                    statusText = "Ejecutando orden..."
 
-                    speakNextPhrase()
+                    executeCommand(capturedCommand)
                 } else {
                     statusText = "Di Milo seguido de una orden"
 
@@ -417,27 +430,42 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         if (!isTtsReady || isSpeaking) {
             return
         }
-        isSpeaking = true
-        statusText = "Hablando..."
-        stopListeningForMilo()
 
         val phrase = phrases[phraseIndex]
 
         phraseIndex = (phraseIndex + 1) % phrases.size
 
+        speakText(phrase)
+    }
+
+    private fun speakText(
+        text: String,
+        afterSpeech: (() -> Unit)? = null
+    ) {
+        if (!isTtsReady || isSpeaking) {
+            return
+        }
+
+        pendingActionAfterSpeech = afterSpeech
+        isSpeaking = true
+        statusText = "Hablando..."
+
+        stopListeningForMilo()
+
         val result = textToSpeech.speak(
-            phrase,
+            text,
             TextToSpeech.QUEUE_FLUSH,
             null,
             "milo-${System.currentTimeMillis()}"
         )
 
         if (result == TextToSpeech.ERROR) {
+            pendingActionAfterSpeech = null
             isSpeaking = false
             statusText = "Error al hablar"
 
             scheduleListeningRestart(
-                delayMillis = 1000L
+                delayMillis = 1_000L
             )
         }
     }
@@ -466,6 +494,174 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         stopListeningForMilo()
 
         super.onStop()
+    }
+
+    private fun normalizeCommand(
+        command: String
+    ): String {
+        return Normalizer
+            .normalize(
+                command.lowercase(Locale.ROOT),
+                Normalizer.Form.NFD
+            )
+            .replace(
+                "\\p{M}+".toRegex(),
+                ""
+            )
+            .replace(
+                "[¿?¡!.,;:]".toRegex(),
+                ""
+            )
+            .replace(
+                "\\s+".toRegex(),
+                " "
+            )
+            .trim()
+    }
+
+    private fun isTimeCommand(
+        command: String
+    ): Boolean {
+        return command in setOf(
+            "dime la hora",
+            "que hora es",
+            "dime que hora es"
+        )
+    }
+
+    private fun isGreetingCommand(
+        command: String
+    ): Boolean {
+        return command in setOf(
+            "saluda",
+            "saludame",
+            "dime algo",
+            "di una frase",
+            "presentate",
+            "di hola"
+        )
+    }
+
+    private fun tellCurrentTime() {
+        val calendar = Calendar.getInstance()
+
+        val hour = calendar.get(
+            Calendar.HOUR_OF_DAY
+        )
+
+        val minute = calendar.get(
+            Calendar.MINUTE
+        )
+
+        val formattedTime = String.format(
+            Locale.ROOT,
+            "%02d:%02d",
+            hour,
+            minute
+        )
+
+        commandResultText = "Hora actual: $formattedTime"
+
+        val spokenTime = when {
+            hour == 1 && minute == 0 -> {
+                "Es la una en punto"
+            }
+
+            hour == 1 -> {
+                "Es la una y $minute"
+            }
+
+            minute == 0 -> {
+                "Son las $hour en punto"
+            }
+
+            else -> {
+                "Son las $hour y $minute"
+            }
+        }
+
+        speakText(spokenTime)
+    }
+
+    private fun isOpenYouTubeCommand(
+        command: String
+    ): Boolean {
+        return command in setOf(
+            "abre youtube",
+            "abrir youtube",
+            "abreme youtube",
+            "inicia youtube"
+        )
+    }
+
+    private fun openYouTube() {
+        val launchIntent = packageManager
+            .getLaunchIntentForPackage(
+                YOUTUBE_PACKAGE
+            )
+
+        if (launchIntent == null) {
+            commandResultText =
+                "YouTube no está instalado"
+
+            speakText(
+                "No encuentro YouTube instalado"
+            )
+
+            return
+        }
+
+        commandResultText = "Abriendo YouTube"
+
+        speakText(
+            text = "Abriendo YouTube",
+            afterSpeech = {
+                try {
+                    startActivity(launchIntent)
+                } catch (_: ActivityNotFoundException) {
+                    commandResultText =
+                        "No se pudo abrir YouTube"
+
+                    speakText(
+                        "No se pudo abrir YouTube"
+                    )
+                }
+            }
+        )
+    }
+
+    private fun executeCommand(
+        command: String
+    ) {
+        val normalizedCommand = normalizeCommand(
+            command
+        )
+
+        when {
+            isOpenYouTubeCommand(normalizedCommand) -> {
+                openYouTube()
+            }
+
+            isTimeCommand(normalizedCommand) -> {
+                tellCurrentTime()
+            }
+
+            isGreetingCommand(normalizedCommand) -> {
+                commandResultText =
+                    "Milo ha pronunciado una frase"
+
+                speakNextPhrase()
+            }
+
+            else -> {
+                commandResultText =
+                    "Orden todavía no compatible"
+
+                speakText(
+                    "Todavía no sé ejecutar esa orden"
+                )
+            }
+        }
     }
 
     private fun extractCommandAfterMilo(
@@ -501,6 +697,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private companion object {
+        const val YOUTUBE_PACKAGE =
+            "com.google.android.youtube"
+
         val MILO_WORD = Regex(
             pattern = "\\bmilo\\b",
             option = RegexOption.IGNORE_CASE
@@ -513,7 +712,8 @@ private fun MiloScreen(
     statusText: String,
     isSpeaking: Boolean,
     mouthPulse: Int,
-    lastCommand: String?
+    lastCommand: String?,
+    commandResultText: String?
 ) {
     Box(
         modifier = Modifier
@@ -565,6 +765,23 @@ private fun MiloScreen(
                 Text(
                     text = command,
                     color = Color(0xFF9FE7FF),
+                    fontSize = 16.sp
+                )
+            }
+            commandResultText?.let { result ->
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Resultado",
+                    color = Color(0xFF77838E),
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = result,
+                    color = Color(0xFFE1F8FF),
                     fontSize = 16.sp
                 )
             }
@@ -663,6 +880,7 @@ private fun MiloScreenPreview() {
         statusText = "En espera",
         isSpeaking = false,
         mouthPulse = 0,
-        lastCommand = "abre Youtube"
+        lastCommand = "abre Youtube",
+        commandResultText = "Abriendo YouTube"
     )
 }
