@@ -3,6 +3,7 @@ package com.example.milo_assistant
 import java.text.Normalizer
 import java.util.Calendar
 import android.os.Bundle
+import android.content.ActivityNotFoundException
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -582,6 +583,53 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         speakText(spokenTime)
     }
 
+    private fun isOpenYouTubeCommand(
+        command: String
+    ): Boolean {
+        return command in setOf(
+            "abre youtube",
+            "abrir youtube",
+            "abreme youtube",
+            "inicia youtube"
+        )
+    }
+
+    private fun openYouTube() {
+        val launchIntent = packageManager
+            .getLaunchIntentForPackage(
+                YOUTUBE_PACKAGE
+            )
+
+        if (launchIntent == null) {
+            commandResultText =
+                "YouTube no está instalado"
+
+            speakText(
+                "No encuentro YouTube instalado"
+            )
+
+            return
+        }
+
+        commandResultText = "Abriendo YouTube"
+
+        speakText(
+            text = "Abriendo YouTube",
+            afterSpeech = {
+                try {
+                    startActivity(launchIntent)
+                } catch (_: ActivityNotFoundException) {
+                    commandResultText =
+                        "No se pudo abrir YouTube"
+
+                    speakText(
+                        "No se pudo abrir YouTube"
+                    )
+                }
+            }
+        )
+    }
+
     private fun executeCommand(
         command: String
     ) {
@@ -590,6 +638,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         )
 
         when {
+            isOpenYouTubeCommand(normalizedCommand) -> {
+                openYouTube()
+            }
+
             isTimeCommand(normalizedCommand) -> {
                 tellCurrentTime()
             }
@@ -645,6 +697,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private companion object {
+        const val YOUTUBE_PACKAGE =
+            "com.google.android.youtube"
+
         val MILO_WORD = Regex(
             pattern = "\\bmilo\\b",
             option = RegexOption.IGNORE_CASE
