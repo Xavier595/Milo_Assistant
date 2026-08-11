@@ -537,6 +537,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             .trim()
     }
 
+    private fun extractContactName(
+        command: String
+    ): String? {
+        val match = CALL_CONTACT_COMMAND
+            .find(command.trim())
+            ?: return null
+
+        return match
+            .groupValues[1]
+            .trim()
+            .takeIf { contactName ->
+                contactName.isNotBlank()
+            }
+    }
+
     private fun isTimeCommand(
         command: String
     ): Boolean {
@@ -648,14 +663,34 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         )
     }
 
+    private fun handleCallContactCommand(
+        contactName: String
+    ) {
+        commandResultText =
+            "Contacto detectado: $contactName"
+
+        speakText(
+            "He detectado el contacto $contactName"
+        )
+    }
+
     private fun executeCommand(
         command: String
     ) {
         val normalizedCommand = normalizeCommand(
             command
         )
+        val contactName = extractContactName(
+            command
+        )
 
         when {
+            contactName != null -> {
+                handleCallContactCommand(
+                    contactName
+                )
+            }
+
             isOpenYouTubeCommand(normalizedCommand) -> {
                 openYouTube()
             }
@@ -720,6 +755,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val MILO_WORD = Regex(
             pattern = "\\bmilo\\b",
+            option = RegexOption.IGNORE_CASE
+        )
+
+        val CALL_CONTACT_COMMAND = Regex(
+            pattern = "^(?:llama|llamar)(?:\\s+a)?\\s+(.+)$",
             option = RegexOption.IGNORE_CASE
         )
     }
