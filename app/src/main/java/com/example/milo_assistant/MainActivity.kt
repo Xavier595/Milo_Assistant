@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private var isActivityVisible = false
     private var hasMicrophonePermission by mutableStateOf(false)
+    private var hasContactsPermission by mutableStateOf(false)
+    private var hasCallPermission by mutableStateOf(false)
     private var isTtsReady by mutableStateOf(false)
     private var isSpeaking by mutableStateOf(false)
     private var isListening by mutableStateOf(false)
@@ -122,6 +124,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hasMicrophonePermission = hasRecordAudioPermission()
+        hasContactsPermission = hasReadContactsPermission()
+        hasCallPermission = hasCallPhonePermission()
         textToSpeech = TextToSpeech(this, this)
         setContent {
             MiloScreen(
@@ -474,6 +478,20 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasReadContactsPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasCallPhonePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CALL_PHONE
         ) == PackageManager.PERMISSION_GRANTED
     }
 
