@@ -319,6 +319,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             override fun onError(error: Int) {
                 isListening = false
+                if (
+                    isWaitingForCallConfirmation &&
+                    isActivityVisible
+                ) {
+                    statusText = "Di sí o no"
+
+                    speakText(
+                        text = "No te he oído. Di sí o no.",
+                        afterSpeech = {
+                            startListeningForCallConfirmation()
+                        }
+                    )
+
+                    return
+                }
 
                 if (isSpeaking || !isActivityVisible) {
                     return
@@ -365,6 +380,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     )
                     .orEmpty()
 
+                if (isWaitingForCallConfirmation) {
+                    handleCallConfirmation(
+                        recognizedTexts
+                    )
+
+                    return
+                }
+
                 val capturedCommand = recognizedTexts
                     .asSequence()
                     .mapNotNull { recognizedText ->
@@ -398,6 +421,70 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             ) {
             }
         }
+    }
+
+    private fun handleCallConfirmation(
+        recognizedTexts: List<String>
+    ) {
+        val normalizedAnswers =
+            recognizedTexts.map { answer ->
+                normalizeCommand(answer)
+            }
+
+        when {
+            normalizedAnswers.any { answer ->
+                answer == "si"
+            } -> {
+                val contact =
+                    pendingCallContact
+
+                isWaitingForCallConfirmation = false
+
+                if (contact == null) {
+                    cancelPendingCall(
+                        "No hay ninguna llamada pendiente"
+                    )
+
+                    return
+                }
+
+                confirmCall(
+                    contact
+                )
+            }
+
+            normalizedAnswers.any { answer ->
+                answer == "no"
+            } -> {
+                cancelPendingCall(
+                    "Llamada cancelada"
+                )
+            }
+
+            else -> {
+                commandResultText =
+                    "No he entendido la confirmación"
+
+                speakText(
+                    text =
+                        "No te he entendido. Di sí o no.",
+                    afterSpeech = {
+                        startListeningForCallConfirmation()
+                    }
+                )
+            }
+        }
+    }
+
+    private fun confirmCall(
+        contact: ContactPhone
+    ) {
+        commandResultText =
+            "Llamada confirmada para ${contact.displayName}"
+
+        speakText(
+            "Llamada confirmada para ${contact.displayName}"
+        )
     }
 
     private fun startListeningForMilo() {
@@ -812,10 +899,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     ) {
         pendingCallContact = null
         isWaitingForCallConfirmation = false
+
         commandResultText = message
 
-        scheduleListeningRestart(
-            delayMillis = 700L
+        speakText(
+            "De acuerdo, cancelo la llamada"
         )
     }
 
