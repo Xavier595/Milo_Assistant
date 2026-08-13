@@ -48,9 +48,19 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
+import android.provider.ContactsContract
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
+    private data class ContactPhone(
+        val displayName: String,
+        val phoneNumber: String
+    )
     private var speechRecognizer: SpeechRecognizer? = null
     private var pendingActionAfterSpeech: (() -> Unit)? = null
     private val mainHandler = Handler(
@@ -63,6 +73,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private var isActivityVisible = false
     private var hasMicrophonePermission by mutableStateOf(false)
+    private var hasContactsPermission by mutableStateOf(false)
+    private var hasCallPermission by mutableStateOf(false)
+    private var pendingContactName: String? = null
+    private var pendingCallContact: ContactPhone? = null
+
+    private var isWaitingForCallConfirmation = false
     private var isTtsReady by mutableStateOf(false)
     private var isSpeaking by mutableStateOf(false)
     private var isListening by mutableStateOf(false)
@@ -119,9 +135,65 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
         }
 
+    private val contactsPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+
+            hasContactsPermission = granted
+
+            val contactName = pendingContactName
+            pendingContactName = null
+
+            if (granted && contactName != null) {
+                searchContactForCall(
+                    contactName
+                )
+            } else {
+                commandResultText =
+                    "Permiso de contactos denegado"
+
+                speakText(
+                    "Necesito permiso para acceder a tus contactos"
+                )
+            }
+        }
+
+    private val callPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+
+            hasCallPermission = granted
+
+            val contact =
+                pendingCallContact
+
+            if (
+                granted &&
+                contact != null
+            ) {
+                placeConfirmedCall(
+                    contact
+                )
+            } else {
+                pendingCallContact = null
+                isWaitingForCallConfirmation = false
+
+                commandResultText =
+                    "Permiso de llamadas denegado"
+
+                speakText(
+                    "No puedo realizar la llamada sin permiso"
+                )
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hasMicrophonePermission = hasRecordAudioPermission()
+        hasContactsPermission = hasReadContactsPermission()
+        hasCallPermission = hasCallPhonePermission()
         textToSpeech = TextToSpeech(this, this)
         setContent {
             MiloScreen(
@@ -277,6 +349,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             override fun onError(error: Int) {
                 isListening = false
+                if (
+                    isWaitingForCallConfirmation &&
+                    isActivityVisible
+                ) {
+                    statusText = "Di sí o no"
+
+                    speakText(
+                        text = "No te he oído. Di sí o no.",
+                        afterSpeech = {
+                            startListeningForCallConfirmation()
+                        }
+                    )
+
+                    return
+                }
 
                 if (isSpeaking || !isActivityVisible) {
                     return
@@ -323,6 +410,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     )
                     .orEmpty()
 
+                if (isWaitingForCallConfirmation) {
+                    handleCallConfirmation(
+                        recognizedTexts
+                    )
+
+                    return
+                }
+
                 val capturedCommand = recognizedTexts
                     .asSequence()
                     .mapNotNull { recognizedText ->
@@ -355,6 +450,127 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 params: Bundle?
             ) {
             }
+        }
+    }
+
+    private fun handleCallConfirmation(
+        recognizedTexts: List<String>
+    ) {
+        val normalizedAnswers =
+            recognizedTexts.map { answer ->
+                normalizeCommand(answer)
+            }
+
+        when {
+            normalizedAnswers.any { answer ->
+                answer == "si"
+            } -> {
+                val contact =
+                    pendingCallContact
+
+                isWaitingForCallConfirmation = false
+
+                if (contact == null) {
+                    cancelPendingCall(
+                        "No hay ninguna llamada pendiente"
+                    )
+
+                    return
+                }
+
+                confirmCall(
+                    contact
+                )
+            }
+
+            normalizedAnswers.any { answer ->
+                answer == "no"
+            } -> {
+                cancelPendingCall(
+                    "Llamada cancelada"
+                )
+            }
+
+            else -> {
+                commandResultText =
+                    "No he entendido la confirmación"
+
+                speakText(
+                    text =
+                        "No te he entendido. Di sí o no.",
+                    afterSpeech = {
+                        startListeningForCallConfirmation()
+                    }
+                )
+            }
+        }
+    }
+
+    private fun confirmCall(
+        contact: ContactPhone
+    ) {
+        hasCallPermission =
+            hasCallPhonePermission()
+
+        if (!hasCallPermission) {
+            pendingCallContact = contact
+
+            callPermissionLauncher.launch(
+                Manifest.permission.CALL_PHONE
+            )
+
+            return
+        }
+
+        placeConfirmedCall(
+            contact
+        )
+    }
+
+    private fun placeConfirmedCall(
+        contact: ContactPhone
+    ) {
+        if (!hasCallPhonePermission()) {
+            commandResultText =
+                "Permiso de llamadas necesario"
+
+            return
+        }
+
+        pendingCallContact = null
+        isWaitingForCallConfirmation = false
+
+        commandResultText =
+            "Llamando a ${contact.displayName}"
+
+        val callIntent = Intent(
+            Intent.ACTION_CALL
+        ).apply {
+            data = Uri.fromParts(
+                "tel",
+                contact.phoneNumber,
+                null
+            )
+        }
+
+        try {
+            startActivity(
+                callIntent
+            )
+        } catch (_: SecurityException) {
+            commandResultText =
+                "No tengo permiso para realizar la llamada"
+
+            speakText(
+                "No tengo permiso para realizar la llamada"
+            )
+        } catch (_: ActivityNotFoundException) {
+            commandResultText =
+                "No encuentro una aplicación de teléfono"
+
+            speakText(
+                "No encuentro una aplicación para realizar la llamada"
+            )
         }
     }
 
@@ -477,6 +693,20 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private fun hasReadContactsPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasCallPhonePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.CALL_PHONE
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     override fun onStart() {
         super.onStart()
 
@@ -517,6 +747,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 " "
             )
             .trim()
+    }
+
+    private fun extractContactName(
+        command: String
+    ): String? {
+        val match = CALL_CONTACT_COMMAND
+            .find(command.trim())
+            ?: return null
+
+        return match
+            .groupValues[1]
+            .trim()
+            .takeIf { contactName ->
+                contactName.isNotBlank()
+            }
     }
 
     private fun isTimeCommand(
@@ -630,14 +875,211 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         )
     }
 
+    private fun handleCallContactCommand(
+        contactName: String
+    ) {
+        hasContactsPermission =
+            hasReadContactsPermission()
+
+        if (!hasContactsPermission) {
+            pendingContactName = contactName
+
+            commandResultText =
+                "Solicitando acceso a contactos"
+
+            contactsPermissionLauncher.launch(
+                Manifest.permission.READ_CONTACTS
+            )
+
+            return
+        }
+
+        searchContactForCall(
+            contactName
+        )
+    }
+
+    private fun searchContactForCall(
+        contactName: String
+    ) {
+        lifecycleScope.launch {
+            statusText = "Buscando contacto..."
+
+            val contact = findContactPhone(
+                contactName
+            )
+
+            if (contact == null) {
+                commandResultText =
+                    "No encuentro a $contactName"
+
+                speakText(
+                    "No encuentro a $contactName en tus contactos"
+                )
+
+                return@launch
+            }
+
+            askForCallConfirmation(
+                contact
+            )
+        }
+    }
+
+    private fun askForCallConfirmation(
+        contact: ContactPhone
+    ) {
+        pendingCallContact = contact
+        isWaitingForCallConfirmation = true
+
+        commandResultText =
+            "Esperando confirmación"
+
+        speakText(
+            text =
+                "¿Seguro que quieres llamar a ${contact.displayName}?",
+            afterSpeech = {
+                startListeningForCallConfirmation()
+            }
+        )
+    }
+
+    private fun startListeningForCallConfirmation() {
+        if (
+            !isActivityVisible ||
+            !hasMicrophonePermission ||
+            isSpeaking ||
+            isListening
+        ) {
+            return
+        }
+
+        initializeSpeechRecognizer()
+
+        val recognizer =
+            speechRecognizer ?: return
+
+        try {
+            isListening = true
+            statusText = "Di sí o no"
+
+            recognizer.startListening(
+                recognitionIntent
+            )
+        } catch (_: SecurityException) {
+            isListening = false
+
+            cancelPendingCall(
+                "No tengo permiso para escuchar"
+            )
+        } catch (_: RuntimeException) {
+            isListening = false
+
+            cancelPendingCall(
+                "No pude escuchar la confirmación"
+            )
+        }
+    }
+
+    private fun cancelPendingCall(
+        message: String
+    ) {
+        pendingCallContact = null
+        isWaitingForCallConfirmation = false
+
+        commandResultText = message
+
+        speakText(
+            "De acuerdo, cancelo la llamada"
+        )
+    }
+
+    private suspend fun findContactPhone(
+        contactName: String
+    ): ContactPhone? = withContext(Dispatchers.IO) {
+
+        val searchUri = Uri.withAppendedPath(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI,
+            Uri.encode(contactName)
+        )
+
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
+
+        try {
+            contentResolver.query(
+                searchUri,
+                projection,
+                null,
+                null,
+                null
+            )?.use { cursor ->
+
+                val nameColumn =
+                    cursor.getColumnIndexOrThrow(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                    )
+
+                val numberColumn =
+                    cursor.getColumnIndexOrThrow(
+                        ContactsContract.CommonDataKinds.Phone.NUMBER
+                    )
+
+                var firstMatch: ContactPhone? = null
+
+                while (cursor.moveToNext()) {
+
+                    val displayName =
+                        cursor.getString(nameColumn)
+                            ?: continue
+
+                    val phoneNumber =
+                        cursor.getString(numberColumn)
+                            ?: continue
+
+                    val candidate = ContactPhone(
+                        displayName = displayName,
+                        phoneNumber = phoneNumber
+                    )
+
+                    if (firstMatch == null) {
+                        firstMatch = candidate
+                    }
+
+                    if (
+                        normalizeCommand(displayName) ==
+                        normalizeCommand(contactName)
+                    ) {
+                        return@withContext candidate
+                    }
+                }
+
+                firstMatch
+            }
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
     private fun executeCommand(
         command: String
     ) {
         val normalizedCommand = normalizeCommand(
             command
         )
+        val contactName = extractContactName(
+            command
+        )
 
         when {
+            contactName != null -> {
+                handleCallContactCommand(
+                    contactName
+                )
+            }
+
             isOpenYouTubeCommand(normalizedCommand) -> {
                 openYouTube()
             }
@@ -702,6 +1144,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val MILO_WORD = Regex(
             pattern = "\\bmilo\\b",
+            option = RegexOption.IGNORE_CASE
+        )
+
+        val CALL_CONTACT_COMMAND = Regex(
+            pattern = "^(?:llama|llamar)(?:\\s+a)?\\s+(.+)$",
             option = RegexOption.IGNORE_CASE
         )
     }
