@@ -159,6 +159,36 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
         }
 
+    private val callPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+
+            hasCallPermission = granted
+
+            val contact =
+                pendingCallContact
+
+            if (
+                granted &&
+                contact != null
+            ) {
+                placeConfirmedCall(
+                    contact
+                )
+            } else {
+                pendingCallContact = null
+                isWaitingForCallConfirmation = false
+
+                commandResultText =
+                    "Permiso de llamadas denegado"
+
+                speakText(
+                    "No puedo realizar la llamada sin permiso"
+                )
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hasMicrophonePermission = hasRecordAudioPermission()
@@ -479,12 +509,69 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun confirmCall(
         contact: ContactPhone
     ) {
-        commandResultText =
-            "Llamada confirmada para ${contact.displayName}"
+        hasCallPermission =
+            hasCallPhonePermission()
 
-        speakText(
-            "Llamada confirmada para ${contact.displayName}"
+        if (!hasCallPermission) {
+            pendingCallContact = contact
+
+            callPermissionLauncher.launch(
+                Manifest.permission.CALL_PHONE
+            )
+
+            return
+        }
+
+        placeConfirmedCall(
+            contact
         )
+    }
+
+    private fun placeConfirmedCall(
+        contact: ContactPhone
+    ) {
+        if (!hasCallPhonePermission()) {
+            commandResultText =
+                "Permiso de llamadas necesario"
+
+            return
+        }
+
+        pendingCallContact = null
+        isWaitingForCallConfirmation = false
+
+        commandResultText =
+            "Llamando a ${contact.displayName}"
+
+        val callIntent = Intent(
+            Intent.ACTION_CALL
+        ).apply {
+            data = Uri.fromParts(
+                "tel",
+                contact.phoneNumber,
+                null
+            )
+        }
+
+        try {
+            startActivity(
+                callIntent
+            )
+        } catch (_: SecurityException) {
+            commandResultText =
+                "No tengo permiso para realizar la llamada"
+
+            speakText(
+                "No tengo permiso para realizar la llamada"
+            )
+        } catch (_: ActivityNotFoundException) {
+            commandResultText =
+                "No encuentro una aplicación de teléfono"
+
+            speakText(
+                "No encuentro una aplicación para realizar la llamada"
+            )
+        }
     }
 
     private fun startListeningForMilo() {
