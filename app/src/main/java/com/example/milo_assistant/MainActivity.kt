@@ -76,6 +76,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var hasContactsPermission by mutableStateOf(false)
     private var hasCallPermission by mutableStateOf(false)
     private var pendingContactName: String? = null
+    private var pendingCallContact: ContactPhone? = null
+
+    private var isWaitingForCallConfirmation = false
     private var isTtsReady by mutableStateOf(false)
     private var isSpeaking by mutableStateOf(false)
     private var isListening by mutableStateOf(false)
@@ -752,11 +755,67 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun askForCallConfirmation(
         contact: ContactPhone
     ) {
+        pendingCallContact = contact
+        isWaitingForCallConfirmation = true
+
         commandResultText =
-            "Contacto encontrado: ${contact.displayName}"
+            "Esperando confirmación"
 
         speakText(
-            "He encontrado a ${contact.displayName}"
+            text =
+                "¿Seguro que quieres llamar a ${contact.displayName}?",
+            afterSpeech = {
+                startListeningForCallConfirmation()
+            }
+        )
+    }
+
+    private fun startListeningForCallConfirmation() {
+        if (
+            !isActivityVisible ||
+            !hasMicrophonePermission ||
+            isSpeaking ||
+            isListening
+        ) {
+            return
+        }
+
+        initializeSpeechRecognizer()
+
+        val recognizer =
+            speechRecognizer ?: return
+
+        try {
+            isListening = true
+            statusText = "Di sí o no"
+
+            recognizer.startListening(
+                recognitionIntent
+            )
+        } catch (_: SecurityException) {
+            isListening = false
+
+            cancelPendingCall(
+                "No tengo permiso para escuchar"
+            )
+        } catch (_: RuntimeException) {
+            isListening = false
+
+            cancelPendingCall(
+                "No pude escuchar la confirmación"
+            )
+        }
+    }
+
+    private fun cancelPendingCall(
+        message: String
+    ) {
+        pendingCallContact = null
+        isWaitingForCallConfirmation = false
+        commandResultText = message
+
+        scheduleListeningRestart(
+            delayMillis = 700L
         )
     }
 
