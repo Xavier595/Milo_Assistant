@@ -1217,6 +1217,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             textToSpeech.stop()
             textToSpeech.shutdown()
         }
+        localAi?.close()
+        localAi = null
         super.onDestroy()
     }
 
