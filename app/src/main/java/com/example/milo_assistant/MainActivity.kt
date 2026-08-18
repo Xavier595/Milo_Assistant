@@ -54,6 +54,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.milo_assistant.ai.LocalConversationalAi
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
@@ -61,6 +62,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val displayName: String,
         val phoneNumber: String
     )
+    private var localAi: LocalConversationalAi? = null
+
+    private var isAiReady by mutableStateOf(false)
+    private var isAiThinking by mutableStateOf(false)
     private var speechRecognizer: SpeechRecognizer? = null
     private var pendingActionAfterSpeech: (() -> Unit)? = null
     private val mainHandler = Handler(
@@ -1063,6 +1068,26 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    private suspend fun getOrCreateLocalAi():
+            LocalConversationalAi {
+
+        localAi?.let { existingAi ->
+            return existingAi
+        }
+
+        val newAi =
+            LocalConversationalAi(
+                modelPath = LOCAL_AI_MODEL_PATH
+            )
+
+        newAi.initialize()
+
+        localAi = newAi
+        isAiReady = true
+
+        return newAi
+    }
+
     private fun executeCommand(
         command: String
     ) {
@@ -1139,6 +1164,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private companion object {
+        const val LOCAL_AI_MODEL_PATH =
+            "/data/local/tmp/llm/gemma3-1b-it-int4.litertlm"
         const val YOUTUBE_PACKAGE =
             "com.google.android.youtube"
 
