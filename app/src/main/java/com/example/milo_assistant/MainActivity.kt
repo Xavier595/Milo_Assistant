@@ -1088,6 +1088,66 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         return newAi
     }
 
+    private fun askLocalAi(
+        question: String
+    ) {
+        if (
+            isAiThinking ||
+            isSpeaking
+        ) {
+            return
+        }
+
+        isAiThinking = true
+
+        commandResultText = null
+
+        statusText =
+            if (isAiReady) {
+                "Pensando..."
+            } else {
+                "Cargando IA local..."
+            }
+
+        stopListeningForMilo()
+
+        lifecycleScope.launch {
+
+            try {
+                val ai =
+                    getOrCreateLocalAi()
+
+                statusText =
+                    "Pensando..."
+
+                val response =
+                    ai.ask(
+                        question
+                    )
+
+                commandResultText =
+                    response
+
+                isAiThinking = false
+
+                speakText(
+                    response
+                )
+
+            } catch (exception: Exception) {
+
+                isAiThinking = false
+
+                commandResultText =
+                    "IA local no disponible"
+
+                speakText(
+                    "No puedo iniciar mi inteligencia local ahora mismo"
+                )
+            }
+        }
+    }
+
     private fun executeCommand(
         command: String
     ) {
@@ -1121,11 +1181,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
 
             else -> {
-                commandResultText =
-                    "Orden todavía no compatible"
-
-                speakText(
-                    "Todavía no sé ejecutar esa orden"
+                askLocalAi(
+                    command
                 )
             }
         }
