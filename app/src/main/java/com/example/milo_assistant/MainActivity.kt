@@ -57,6 +57,7 @@ import kotlinx.coroutines.withContext
 import com.example.milo_assistant.ai.LocalConversationalAi
 import com.example.milo_assistant.knowledge.WikipediaKnowledgeClient
 import com.example.milo_assistant.knowledge.OpenMeteoWeatherClient
+import com.example.milo_assistant.knowledge.GdeltNewsClient
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
@@ -64,12 +65,17 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val displayName: String,
         val phoneNumber: String
     )
+    private data class NewsRequest(
+        val topic: String?
+    )
     private var localAi: LocalConversationalAi? = null
     private val wikipediaKnowledgeClient =
         WikipediaKnowledgeClient()
 
     private val weatherClient =
         OpenMeteoWeatherClient()
+    private val newsClient =
+        GdeltNewsClient()
     private var isAiReady by mutableStateOf(false)
     private var isAiThinking by mutableStateOf(false)
     private var speechRecognizer: SpeechRecognizer? = null
@@ -1338,6 +1344,153 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 )
             }
         }
+    }
+
+    private fun extractNewsRequest(
+        command: String
+    ): NewsRequest? {
+
+        val normalized =
+            normalizeCommand(command)
+
+        val generalNewsCommands =
+            setOf(
+                "noticias",
+                "noticias actuales",
+                "noticias de hoy",
+                "ultimas noticias",
+                "ultimas noticias de hoy"
+            )
+
+        if (
+            normalized in generalNewsCommands
+        ) {
+            return NewsRequest(
+                topic = null
+            )
+        }
+
+        val topicPrefixes =
+            listOf(
+                "dime las ultimas noticias sobre ",
+                "dime las noticias actuales sobre ",
+                "noticias sobre "
+            )
+
+        for (prefix in topicPrefixes) {
+
+            if (
+                normalized.startsWith(
+                    prefix
+                )
+            ) {
+
+                val topic =
+                    normalized
+                        .removePrefix(
+                            prefix
+                        )
+                        .trim()
+
+                if (topic.isNotBlank()) {
+                    return NewsRequest(
+                        topic = topic
+                    )
+                }
+            }
+        }
+
+        return null
+    }
+
+    private suspend fun answerNews(
+        request: NewsRequest
+    ) {
+
+        statusText =
+            "Buscando noticias..."
+
+        val articles =
+            try {
+                newsClient.getLatestNews(
+                    topic = request.topic,
+                    limit = 5
+                )
+            } catch (
+                exception: Exception
+            ) {
+                emptyList()
+            }
+
+        if (articles.isEmpty()) {
+
+            val message =
+                "No he podido encontrar noticias recientes sobre esa consulta."
+
+            commandResultText =
+                message
+
+            isAiThinking =
+                false
+
+            speakText(message)
+
+            return
+        }
+
+        val articlesToSpeak =
+            articles.take(3)
+
+        val intro =
+            if (
+                request.topic.isNullOrBlank()
+            ) {
+                "Estas son algunas noticias recientes."
+            } else {
+                "Estas son algunas noticias recientes sobre ${request.topic}."
+            }
+
+        val spokenResponse =
+            buildString {
+
+                append(intro)
+                append(" ")
+
+                articlesToSpeak
+                    .forEachIndexed {
+                            index,
+                            article ->
+
+                        append(
+                            "${index + 1}. ${article.title}. "
+                        )
+                    }
+            }
+                .trim()
+
+        val sources =
+            articlesToSpeak
+                .joinToString(
+                    separator = "\n"
+                ) {
+                        article ->
+                    "• ${article.domain}"
+                }
+
+        commandResultText =
+            """
+        $spokenResponse
+
+        Fuentes:
+        $sources
+        """.trimIndent()
+
+        isAiThinking =
+            false
+
+        speakText(
+            spokenResponse
+        )
     }
 
     private fun executeCommand(
