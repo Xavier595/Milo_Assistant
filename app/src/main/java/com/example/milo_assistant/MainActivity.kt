@@ -1068,17 +1068,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private suspend fun getOrCreateLocalAi():
-            LocalConversationalAi {
-
+    private suspend fun getOrCreateLocalAi(): LocalConversationalAi {
         localAi?.let { existingAi ->
             return existingAi
         }
 
-        val newAi =
-            LocalConversationalAi(
-                modelPath = LOCAL_AI_MODEL_PATH
-            )
+        val newAi = LocalConversationalAi(
+            context = applicationContext,
+            modelPath = LOCAL_AI_MODEL_PATH
+        )
 
         newAi.initialize()
 
@@ -1224,7 +1222,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private companion object {
         const val LOCAL_AI_MODEL_PATH =
-            "/data/local/tmp/llm/gemma3-1b-it-int4.litertlm"
+            "/data/local/tmp/llm/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task"
         const val YOUTUBE_PACKAGE =
             "com.google.android.youtube"
 

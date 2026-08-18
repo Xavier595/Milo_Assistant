@@ -54,6 +54,6 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(
-        "com.google.ai.edge.litertlm:litertlm-android:0.16.0"
+        "com.google.mediapipe:tasks-genai:0.10.27"
     )
 }

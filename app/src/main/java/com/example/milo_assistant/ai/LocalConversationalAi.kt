@@ -1,79 +1,72 @@
 package com.example.milo_assistant.ai
 
-import com.google.ai.edge.litertlm.Backend
-import com.google.ai.edge.litertlm.Contents
-import com.google.ai.edge.litertlm.Conversation
-import com.google.ai.edge.litertlm.ConversationConfig
-import com.google.ai.edge.litertlm.Engine
-import com.google.ai.edge.litertlm.EngineConfig
-import com.google.ai.edge.litertlm.SamplerConfig
+import android.content.Context
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class LocalConversationalAi(
+    private val context: Context,
     private val modelPath: String
 ) : AutoCloseable {
 
-    private var engine: Engine? = null
-    private var conversation: Conversation? = null
+    private var llmInference: LlmInference? = null
+
+    private val miloInstructions = """
+    Eres Milo, un asistente personal conversacional.
+
+    Tu nombre siempre es Milo.
+    Nunca digas que eres Qwen, un modelo de lenguaje,
+    una IA de Alibaba ni otro asistente.
+
+    Responde siempre en español, salvo que el usuario
+    te pida explícitamente otro idioma.
+
+    Tu personalidad es amable, natural, curiosa y directa.
+
+    Tus respuestas serán pronunciadas mediante voz.
+    Responde normalmente usando entre una y tres frases.
+
+    Para preguntas de hechos, prioriza la precisión
+    sobre dar una respuesta.
+
+    No inventes nombres, fechas, lugares,
+    cifras ni acontecimientos.
+
+    Si no estás razonablemente seguro de un dato,
+    responde que no lo sabes con seguridad.
+
+    No intentes rellenar información que no conozcas.
+
+    No afirmes que has abierto aplicaciones,
+    realizado llamadas o modificado el teléfono.
+    Esas acciones pertenecen al sistema Android de Milo.
+
+    Si una pregunta necesita información actual de Internet,
+    dilo claramente en lugar de inventarla.
+
+    Si te preguntan quién eres,
+    responde que eres Milo, un asistente personal.
+""".trimIndent()
 
     suspend fun initialize() {
-        withContext(Dispatchers.Default) {
-
-            if (engine != null) {
+        withContext(Dispatchers.IO) {
+            if (llmInference != null) {
                 return@withContext
             }
 
-            val newEngine = Engine(
-                EngineConfig(
-                    modelPath = modelPath,
-                    backend = Backend.CPU()
+            val options =
+                LlmInference.LlmInferenceOptions.builder()
+                    .setModelPath(modelPath)
+                    .setMaxTokens(512)
+                    .setMaxTopK(40)
+                    .build()
+
+            llmInference =
+                LlmInference.createFromOptions(
+                    context,
+                    options
                 )
-            )
-
-            newEngine.initialize()
-
-            val conversationConfig =
-                ConversationConfig(
-                    systemInstruction = Contents.of(
-                        """
-                        Eres Milo, un asistente personal conversacional.
-
-                        Responde principalmente en español.
-
-                        Tu personalidad es amable, natural, curiosa y directa.
-
-                        Tus respuestas serán pronunciadas mediante voz,
-                        por lo que normalmente debes responder de forma breve,
-                        usando entre una y tres frases.
-
-                        No afirmes que has abierto aplicaciones,
-                        realizado llamadas o modificado el teléfono.
-                        Esas acciones pertenecen al sistema Android de Milo.
-
-                        Si no conoces la respuesta, dilo claramente.
-
-                        Cuando una pregunta dependa de información actual
-                        de Internet, indícalo en lugar de inventar datos.
-
-                        Tu nombre es Milo.
-                        """.trimIndent()
-                    ),
-
-                    samplerConfig = SamplerConfig(
-                        topK = 20,
-                        topP = 0.9,
-                        temperature = 0.7
-                    )
-                )
-
-            val newConversation =
-                newEngine.createConversation(
-                    conversationConfig
-                )
-
-            engine = newEngine
-            conversation = newConversation
         }
     }
 
@@ -81,23 +74,28 @@ class LocalConversationalAi(
         question: String
     ): String = withContext(Dispatchers.Default) {
 
-        val activeConversation =
-            conversation
+        val inference =
+            llmInference
                 ?: error(
                     "Local AI has not been initialized"
                 )
 
-        activeConversation
-            .sendMessage(question)
-            .toString()
+        val prompt = """
+            $miloInstructions
+
+            Usuario:
+            $question
+
+            Milo:
+        """.trimIndent()
+
+        inference
+            .generateResponse(prompt)
             .trim()
     }
 
     override fun close() {
-        conversation?.close()
-        conversation = null
-
-        engine?.close()
-        engine = null
+        llmInference?.close()
+        llmInference = null
     }
 }
