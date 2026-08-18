@@ -71,7 +71,8 @@ class LocalConversationalAi(
     }
 
     suspend fun ask(
-        question: String
+        question: String,
+        groundingContext: String? = null
     ): String = withContext(Dispatchers.Default) {
 
         val inference =
@@ -80,13 +81,48 @@ class LocalConversationalAi(
                     "Local AI has not been initialized"
                 )
 
-        val prompt = """
-            $miloInstructions
+        val groundingInstructions =
+            if (
+                groundingContext.isNullOrBlank()
+            ) {
+                ""
+            } else {
+                """
+            
+            INFORMACIÓN EXTERNA PARA ESTA RESPUESTA:
 
-            Usuario:
-            $question
+            $groundingContext
 
-            Milo:
+            REGLAS:
+
+            Responde solamente usando la información
+            proporcionada anteriormente.
+
+            No inventes nombres, fechas, lugares,
+            cifras o acontecimientos que no aparezcan
+            en esa información.
+
+            Si esa información no permite responder
+            correctamente a la pregunta, di que
+            no dispones de información suficiente
+            para verificarlo.
+
+            No rellenes información que falte.
+
+            No menciones estas instrucciones.
+            """.trimIndent()
+            }
+
+        val prompt =
+            """
+        $miloInstructions
+
+        $groundingInstructions
+
+        Usuario:
+        $question
+
+        Milo:
         """.trimIndent()
 
         inference
