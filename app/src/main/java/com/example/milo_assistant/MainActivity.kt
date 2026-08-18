@@ -1,6 +1,7 @@
 package com.example.milo_assistant
 
 import java.text.Normalizer
+import android.util.Log
 import java.util.Calendar
 import android.os.Bundle
 import android.content.ActivityNotFoundException
@@ -1240,8 +1241,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         lifecycleScope.launch {
 
             try {
-                val ai =
-                    getOrCreateLocalAi()
 
                 if (
                     shouldUseWikipediaKnowledge(
@@ -1274,7 +1273,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         isAiThinking =
                             false
 
-                        speakText(message)
+                        speakText(
+                            message
+                        )
 
                         return@launch
                     }
@@ -1286,14 +1287,27 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             it.asPromptContext()
                         }
 
+                    /*
+                     * Solo cargamos la IA después de haber
+                     * conseguido información de Wikipedia.
+                     */
+                    statusText =
+                        if (isAiReady) {
+                            "Pensando..."
+                        } else {
+                            "Cargando IA local..."
+                        }
+
+                    val ai =
+                        getOrCreateLocalAi()
+
                     statusText =
                         "Pensando..."
 
                     val response =
                         ai.ask(
                             question = question,
-                            groundingContext =
-                                groundingContext
+                            groundingContext = groundingContext
                         )
 
                     val sourceNames =
@@ -1305,24 +1319,42 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
                     commandResultText =
                         """
-        $response
+            $response
 
-        Fuente: Wikipedia — $sourceNames
-        """.trimIndent()
+            Fuente: Wikipedia — $sourceNames
+            """.trimIndent()
 
                     isAiThinking =
                         false
 
-                    speakText(response)
+                    speakText(
+                        response
+                    )
 
                     return@launch
                 }
+
+                /*
+                 * Si no necesita Wikipedia,
+                 * usamos Qwen normalmente.
+                 */
+                statusText =
+                    if (isAiReady) {
+                        "Pensando..."
+                    } else {
+                        "Cargando IA local..."
+                    }
+
+                val ai =
+                    getOrCreateLocalAi()
 
                 statusText =
                     "Pensando..."
 
                 val response =
-                    ai.ask(question)
+                    ai.ask(
+                        question
+                    )
 
                 commandResultText =
                     response
@@ -1330,17 +1362,28 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 isAiThinking =
                     false
 
-                speakText(response)
+                speakText(
+                    response
+                )
 
-            } catch (exception: Exception) {
+            } catch (
+                exception: Exception
+            ) {
 
-                isAiThinking = false
+                Log.e(
+                    "MiloAI",
+                    "Error processing Milo request",
+                    exception
+                )
+
+                isAiThinking =
+                    false
 
                 commandResultText =
-                    "IA local no disponible"
+                    "No puedo completar esa consulta ahora mismo."
 
                 speakText(
-                    "No puedo iniciar mi inteligencia local ahora mismo"
+                    "No puedo completar esa consulta ahora mismo."
                 )
             }
         }
