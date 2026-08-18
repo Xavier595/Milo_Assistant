@@ -55,6 +55,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.milo_assistant.ai.LocalConversationalAi
+import com.example.milo_assistant.knowledge.WikipediaKnowledgeClient
+import com.example.milo_assistant.knowledge.OpenMeteoWeatherClient
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
@@ -63,7 +65,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val phoneNumber: String
     )
     private var localAi: LocalConversationalAi? = null
+    private val wikipediaKnowledgeClient =
+        WikipediaKnowledgeClient()
 
+    private val weatherClient =
+        OpenMeteoWeatherClient()
     private var isAiReady by mutableStateOf(false)
     private var isAiThinking by mutableStateOf(false)
     private var speechRecognizer: SpeechRecognizer? = null
@@ -659,6 +665,94 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         speakText(phrase)
     }
 
+    private fun extractWeatherLocation(
+        command: String
+    ): String? {
+
+        val normalized =
+            normalizeCommand(command)
+
+        val prefixes =
+            listOf(
+                "que tiempo hace hoy en ",
+                "que tiempo hace en ",
+                "como esta el tiempo hoy en ",
+                "como esta el tiempo en ",
+                "que clima hace hoy en ",
+                "que clima hace en ",
+                "tiempo en ",
+                "clima en "
+            )
+
+        for (prefix in prefixes) {
+
+            if (
+                normalized.startsWith(
+                    prefix
+                )
+            ) {
+                return normalized
+                    .removePrefix(prefix)
+                    .trim()
+                    .ifBlank {
+                        null
+                    }
+            }
+        }
+
+        return null
+    }
+
+    private suspend fun answerWeather(
+        location: String
+    ) {
+
+        statusText =
+            "Consultando el tiempo..."
+
+        val weather =
+            try {
+                weatherClient.getCurrentWeather(
+                    location
+                )
+            } catch (
+                exception: Exception
+            ) {
+                null
+            }
+
+        if (weather == null) {
+
+            val message =
+                "No he podido encontrar información meteorológica para ese lugar."
+
+            commandResultText =
+                message
+
+            isAiThinking =
+                false
+
+            speakText(message)
+
+            return
+        }
+
+        val response =
+            weather.spokenText()
+
+        commandResultText =
+            """
+        $response
+
+        Fuente meteorológica: Open-Meteo
+        """.trimIndent()
+
+        isAiThinking =
+            false
+
+        speakText(response)
+    }
+
     private fun speakText(
         text: String,
         afterSpeech: (() -> Unit)? = null
@@ -729,6 +823,34 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         stopListeningForMilo()
 
         super.onStop()
+    }
+
+    private fun shouldUseWikipediaKnowledge(
+        command: String
+    ): Boolean {
+
+        val normalized =
+            normalizeCommand(command)
+
+        val prefixes =
+            listOf(
+                "quien es",
+                "quien fue",
+                "que es",
+                "que fue",
+                "donde esta",
+                "donde nacio",
+                "cuando nacio",
+                "cuando murio",
+                "como funciona",
+                "por que",
+                "explicame",
+                "hablame de"
+            )
+
+        return prefixes.any {
+            normalized.startsWith(it)
+        }
     }
 
     private fun normalizeCommand(
@@ -1115,22 +1237,94 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 val ai =
                     getOrCreateLocalAi()
 
+                if (
+                    shouldUseWikipediaKnowledge(
+                        question
+                    )
+                ) {
+
+                    statusText =
+                        "Buscando información..."
+
+                    val sources =
+                        try {
+                            wikipediaKnowledgeClient.search(
+                                question
+                            )
+                        } catch (
+                            exception: Exception
+                        ) {
+                            emptyList()
+                        }
+
+                    if (sources.isEmpty()) {
+
+                        val message =
+                            "No he podido verificar esa información ahora mismo."
+
+                        commandResultText =
+                            message
+
+                        isAiThinking =
+                            false
+
+                        speakText(message)
+
+                        return@launch
+                    }
+
+                    val groundingContext =
+                        sources.joinToString(
+                            separator = "\n\n"
+                        ) {
+                            it.asPromptContext()
+                        }
+
+                    statusText =
+                        "Pensando..."
+
+                    val response =
+                        ai.ask(
+                            question = question,
+                            groundingContext =
+                                groundingContext
+                        )
+
+                    val sourceNames =
+                        sources.joinToString(
+                            separator = ", "
+                        ) {
+                            it.title
+                        }
+
+                    commandResultText =
+                        """
+        $response
+
+        Fuente: Wikipedia — $sourceNames
+        """.trimIndent()
+
+                    isAiThinking =
+                        false
+
+                    speakText(response)
+
+                    return@launch
+                }
+
                 statusText =
                     "Pensando..."
 
                 val response =
-                    ai.ask(
-                        question
-                    )
+                    ai.ask(question)
 
                 commandResultText =
                     response
 
-                isAiThinking = false
+                isAiThinking =
+                    false
 
-                speakText(
-                    response
-                )
+                speakText(response)
 
             } catch (exception: Exception) {
 
