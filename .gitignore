@@ -21,3 +21,6 @@ build/
 *.keystore
 .env
 secrets.properties
+
+# Local AI model files
+*.litertlm

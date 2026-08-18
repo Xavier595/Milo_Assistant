@@ -54,6 +54,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.milo_assistant.ai.LocalConversationalAi
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
@@ -61,6 +62,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val displayName: String,
         val phoneNumber: String
     )
+    private var localAi: LocalConversationalAi? = null
+
+    private var isAiReady by mutableStateOf(false)
+    private var isAiThinking by mutableStateOf(false)
     private var speechRecognizer: SpeechRecognizer? = null
     private var pendingActionAfterSpeech: (() -> Unit)? = null
     private val mainHandler = Handler(
@@ -1063,6 +1068,84 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    private suspend fun getOrCreateLocalAi(): LocalConversationalAi {
+        localAi?.let { existingAi ->
+            return existingAi
+        }
+
+        val newAi = LocalConversationalAi(
+            context = applicationContext,
+            modelPath = LOCAL_AI_MODEL_PATH
+        )
+
+        newAi.initialize()
+
+        localAi = newAi
+        isAiReady = true
+
+        return newAi
+    }
+
+    private fun askLocalAi(
+        question: String
+    ) {
+        if (
+            isAiThinking ||
+            isSpeaking
+        ) {
+            return
+        }
+
+        isAiThinking = true
+
+        commandResultText = null
+
+        statusText =
+            if (isAiReady) {
+                "Pensando..."
+            } else {
+                "Cargando IA local..."
+            }
+
+        stopListeningForMilo()
+
+        lifecycleScope.launch {
+
+            try {
+                val ai =
+                    getOrCreateLocalAi()
+
+                statusText =
+                    "Pensando..."
+
+                val response =
+                    ai.ask(
+                        question
+                    )
+
+                commandResultText =
+                    response
+
+                isAiThinking = false
+
+                speakText(
+                    response
+                )
+
+            } catch (exception: Exception) {
+
+                isAiThinking = false
+
+                commandResultText =
+                    "IA local no disponible"
+
+                speakText(
+                    "No puedo iniciar mi inteligencia local ahora mismo"
+                )
+            }
+        }
+    }
+
     private fun executeCommand(
         command: String
     ) {
@@ -1096,11 +1179,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
 
             else -> {
-                commandResultText =
-                    "Orden todavía no compatible"
-
-                speakText(
-                    "Todavía no sé ejecutar esa orden"
+                askLocalAi(
+                    command
                 )
             }
         }
@@ -1135,10 +1215,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             textToSpeech.stop()
             textToSpeech.shutdown()
         }
+        localAi?.close()
+        localAi = null
         super.onDestroy()
     }
 
     private companion object {
+        const val LOCAL_AI_MODEL_PATH =
+            "/data/local/tmp/llm/Qwen2.5-0.5B-Instruct_multi-prefill-seq_q8_ekv1280.task"
         const val YOUTUBE_PACKAGE =
             "com.google.android.youtube"
 
