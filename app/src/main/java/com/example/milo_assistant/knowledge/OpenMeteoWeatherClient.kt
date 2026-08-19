@@ -23,7 +23,9 @@ data class CurrentWeather(
     fun spokenText(): String {
 
         val place =
-            if (country.isNullOrBlank()) {
+            if (
+                country.isNullOrBlank()
+            ) {
                 locationName
             } else {
                 "$locationName, $country"
@@ -35,38 +37,38 @@ data class CurrentWeather(
             )
 
         return buildString {
+
             append(
-                "Ahora mismo en $place hay "
+                "Ahora mismo en $place "
             )
 
             append(
-                "${temperatureC.roundToInt()} grados"
+                "hay ${temperatureC.roundToInt()} grados "
             )
 
             append(
-                ", con $condition"
+                "y $condition. "
             )
 
             append(
-                ". La sensación térmica es de " +
-                        "${apparentTemperatureC.roundToInt()} grados"
+                "La sensación térmica es de " +
+                        "${apparentTemperatureC.roundToInt()} grados. "
             )
 
             append(
-                ", la humedad es del $humidityPercent por ciento"
+                "La humedad es del " +
+                        "$humidityPercent por ciento. "
             )
 
             append(
-                " y el viento es de aproximadamente " +
+                "La precipitación actual es de " +
+                        "$precipitationMm milímetros. "
+            )
+
+            append(
+                "El viento es de aproximadamente " +
                         "${windSpeedKmh.roundToInt()} kilómetros por hora."
             )
-
-            if (precipitationMm > 0.0) {
-                append(
-                    " Se están registrando " +
-                            "$precipitationMm milímetros de precipitación."
-                )
-            }
         }
     }
 }

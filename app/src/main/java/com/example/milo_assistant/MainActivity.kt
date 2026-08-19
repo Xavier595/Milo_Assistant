@@ -58,7 +58,7 @@ import kotlinx.coroutines.withContext
 import com.example.milo_assistant.ai.LocalConversationalAi
 import com.example.milo_assistant.knowledge.WikipediaKnowledgeClient
 import com.example.milo_assistant.knowledge.OpenMeteoWeatherClient
-import com.example.milo_assistant.knowledge.GdeltNewsClient
+import com.example.milo_assistant.knowledge.GoogleNewsClient
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private lateinit var textToSpeech: TextToSpeech
@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private val weatherClient =
         OpenMeteoWeatherClient()
     private val newsClient =
-        GdeltNewsClient()
+        GoogleNewsClient()
     private var isAiReady by mutableStateOf(false)
     private var isAiThinking by mutableStateOf(false)
     private var speechRecognizer: SpeechRecognizer? = null
@@ -677,33 +677,49 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     ): String? {
 
         val normalized =
-            normalizeCommand(command)
-
-        val prefixes =
-            listOf(
-                "que tiempo hace hoy en ",
-                "que tiempo hace en ",
-                "como esta el tiempo hoy en ",
-                "como esta el tiempo en ",
-                "que clima hace hoy en ",
-                "que clima hace en ",
-                "tiempo en ",
-                "clima en "
+            normalizeCommand(
+                command
             )
 
-        for (prefix in prefixes) {
-
-            if (
-                normalized.startsWith(
-                    prefix
+        val patterns =
+            listOf(
+                Regex(
+                    """^que tiempo hace(?: hoy)? en (.+)$"""
+                ),
+                Regex(
+                    """^como esta el tiempo(?: hoy)? en (.+)$"""
+                ),
+                Regex(
+                    """^dime el tiempo(?: de hoy)? en (.+)$"""
+                ),
+                Regex(
+                    """^cual es el tiempo(?: de hoy)? en (.+)$"""
+                ),
+                Regex(
+                    """^que clima hace(?: hoy)? en (.+)$"""
+                ),
+                Regex(
+                    """^tiempo en (.+)$"""
+                ),
+                Regex(
+                    """^clima en (.+)$"""
                 )
-            ) {
-                return normalized
-                    .removePrefix(prefix)
+            )
+
+        for (pattern in patterns) {
+
+            val match =
+                pattern.find(
+                    normalized
+                )
+                    ?: continue
+
+            val location =
+                match.groupValues[1]
                     .trim()
-                    .ifBlank {
-                        null
-                    }
+
+            if (location.isNotBlank()) {
+                return location
             }
         }
 
@@ -719,12 +735,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val weather =
             try {
+
                 weatherClient.getCurrentWeather(
                     location
                 )
+
             } catch (
                 exception: Exception
             ) {
+
+                Log.e(
+                    "MiloWeather",
+                    "Weather lookup failed",
+                    exception
+                )
+
                 null
             }
 
@@ -739,7 +764,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             isAiThinking =
                 false
 
-            speakText(message)
+            speakText(
+                message
+            )
 
             return
         }
@@ -757,7 +784,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         isAiThinking =
             false
 
-        speakText(response)
+        speakText(
+            response
+        )
     }
 
     private fun speakText(
@@ -852,7 +881,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 "como funciona",
                 "por que",
                 "explicame",
-                "hablame de"
+                "hablame de",
+                "hablame sobre"
             )
 
         return prefixes.any {
@@ -1215,6 +1245,69 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         return newAi
     }
 
+    private suspend fun answerWikipedia(
+        question: String
+    ) {
+
+        statusText =
+            "Buscando información..."
+
+        val result =
+            try {
+
+                wikipediaKnowledgeClient.getAnswer(
+                    question
+                )
+
+            } catch (
+                exception: Exception
+            ) {
+
+                Log.e(
+                    "MiloWikipedia",
+                    "Wikipedia lookup failed",
+                    exception
+                )
+
+                null
+            }
+
+        if (result == null) {
+
+            val message =
+                "No he podido verificar esa información ahora mismo."
+
+            commandResultText =
+                message
+
+            isAiThinking =
+                false
+
+            speakText(
+                message
+            )
+
+            return
+        }
+
+        val response =
+            result.extract
+
+        commandResultText =
+            """
+        $response
+
+        Fuente: Wikipedia — ${result.title}
+        """.trimIndent()
+
+        isAiThinking =
+            false
+
+        speakText(
+            response
+        )
+    }
+
     private fun askLocalAi(
         question: String
     ) {
@@ -1242,102 +1335,47 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             try {
 
+                val weatherLocation =
+                    extractWeatherLocation(
+                        question
+                    )
+
+                if (weatherLocation != null) {
+
+                    answerWeather(
+                        weatherLocation
+                    )
+
+                    return@launch
+                }
+
+                val newsRequest =
+                    extractNewsRequest(
+                        question
+                    )
+
+                if (newsRequest != null) {
+
+                    answerNews(
+                        newsRequest
+                    )
+
+                    return@launch
+                }
+
                 if (
                     shouldUseWikipediaKnowledge(
                         question
                     )
                 ) {
 
-                    statusText =
-                        "Buscando información..."
-
-                    val sources =
-                        try {
-                            wikipediaKnowledgeClient.search(
-                                question
-                            )
-                        } catch (
-                            exception: Exception
-                        ) {
-                            emptyList()
-                        }
-
-                    if (sources.isEmpty()) {
-
-                        val message =
-                            "No he podido verificar esa información ahora mismo."
-
-                        commandResultText =
-                            message
-
-                        isAiThinking =
-                            false
-
-                        speakText(
-                            message
-                        )
-
-                        return@launch
-                    }
-
-                    val groundingContext =
-                        sources.joinToString(
-                            separator = "\n\n"
-                        ) {
-                            it.asPromptContext()
-                        }
-
-                    /*
-                     * Solo cargamos la IA después de haber
-                     * conseguido información de Wikipedia.
-                     */
-                    statusText =
-                        if (isAiReady) {
-                            "Pensando..."
-                        } else {
-                            "Cargando IA local..."
-                        }
-
-                    val ai =
-                        getOrCreateLocalAi()
-
-                    statusText =
-                        "Pensando..."
-
-                    val response =
-                        ai.ask(
-                            question = question,
-                            groundingContext = groundingContext
-                        )
-
-                    val sourceNames =
-                        sources.joinToString(
-                            separator = ", "
-                        ) {
-                            it.title
-                        }
-
-                    commandResultText =
-                        """
-            $response
-
-            Fuente: Wikipedia — $sourceNames
-            """.trimIndent()
-
-                    isAiThinking =
-                        false
-
-                    speakText(
-                        response
+                    answerWikipedia(
+                        question
                     )
 
                     return@launch
                 }
 
-                /*
-                 * Si no necesita Wikipedia,
-                 * usamos Qwen normalmente.
-                 */
                 statusText =
                     if (isAiReady) {
                         "Pensando..."
@@ -1394,7 +1432,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     ): NewsRequest? {
 
         val normalized =
-            normalizeCommand(command)
+            normalizeCommand(
+                command
+            )
 
         val generalNewsCommands =
             setOf(
@@ -1402,12 +1442,20 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 "noticias actuales",
                 "noticias de hoy",
                 "ultimas noticias",
-                "ultimas noticias de hoy"
+                "ultimas noticias de hoy",
+                "dime las noticias",
+                "dime las noticias actuales",
+                "dime las noticias de hoy",
+                "que noticias hay",
+                "que noticias hay hoy",
+                "cuales son las ultimas noticias",
+                "cuales son las noticias de hoy"
             )
 
         if (
             normalized in generalNewsCommands
         ) {
+
             return NewsRequest(
                 topic = null
             )
@@ -1415,9 +1463,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val topicPrefixes =
             listOf(
-                "dime las ultimas noticias sobre ",
-                "dime las noticias actuales sobre ",
-                "noticias sobre "
+                "noticias sobre ",
+                "noticias actuales sobre ",
+                "ultimas noticias sobre ",
+                "dime noticias sobre ",
+                "dime las noticias sobre ",
+                "que noticias hay sobre "
             )
 
         for (prefix in topicPrefixes) {
@@ -1436,6 +1487,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         .trim()
 
                 if (topic.isNotBlank()) {
+
                     return NewsRequest(
                         topic = topic
                     )
@@ -1455,20 +1507,31 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         val articles =
             try {
+
                 newsClient.getLatestNews(
                     topic = request.topic,
                     limit = 5
                 )
+
             } catch (
                 exception: Exception
             ) {
+
+                Log.e(
+                    "MiloNews",
+                    "News lookup failed",
+                    exception
+                )
+
                 emptyList()
             }
 
-        if (articles.isEmpty()) {
+        if (
+            articles.isEmpty()
+        ) {
 
             val message =
-                "No he podido encontrar noticias recientes sobre esa consulta."
+                "No he podido encontrar noticias recientes ahora mismo."
 
             commandResultText =
                 message
@@ -1476,57 +1539,72 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             isAiThinking =
                 false
 
-            speakText(message)
+            speakText(
+                message
+            )
 
             return
         }
 
-        val articlesToSpeak =
-            articles.take(3)
+        val selectedArticles =
+            articles.take(
+                3
+            )
 
         val intro =
             if (
                 request.topic.isNullOrBlank()
             ) {
-                "Estas son algunas noticias recientes."
+
+                "He encontrado estas noticias recientes."
+
             } else {
-                "Estas son algunas noticias recientes sobre ${request.topic}."
+
+                "He encontrado estas noticias recientes sobre ${request.topic}."
             }
 
         val spokenResponse =
             buildString {
 
-                append(intro)
-                append(" ")
+                append(
+                    "$intro "
+                )
 
-                articlesToSpeak
+                selectedArticles
                     .forEachIndexed {
                             index,
                             article ->
 
                         append(
-                            "${index + 1}. ${article.title}. "
+                            "${index + 1}. "
+                        )
+
+                        append(
+                            article.title
+                        )
+
+                        append(
+                            ". "
                         )
                     }
             }
                 .trim()
 
-        val sources =
-            articlesToSpeak
-                .joinToString(
-                    separator = "\n"
-                ) {
+        val displayedArticles =
+            selectedArticles
+                .mapIndexed {
+                        index,
                         article ->
-                    "• ${article.domain}"
+
+                    "${index + 1}. ${article.title}\n" +
+                            "   Fuente: ${article.source}"
                 }
+                .joinToString(
+                    separator = "\n\n"
+                )
 
         commandResultText =
-            """
-        $spokenResponse
-
-        Fuentes:
-        $sources
-        """.trimIndent()
+            displayedArticles
 
         isAiThinking =
             false
