@@ -120,7 +120,6 @@ Examples:
 ```text
 Milo qué tiempo hace en Madrid
 Milo llama a Javier
-Milo cuéntame un chiste
 ```
 
 Speech recognition is temporarily stopped while Milo is processing or speaking to avoid conflicts with Text-to-Speech.
@@ -308,7 +307,7 @@ This separation allows the language model to focus on conversation while device 
 | `Milo dónde está Argelia` | Wikipedia |
 | `Milo qué tiempo hace en Madrid` | Open-Meteo |
 | `Milo últimas noticias` | Google News RSS |
-| `Milo cuéntame un chiste` | Local Qwen model |
+| `Milo quén eres` | Local Qwen model |
 
 ---
 
@@ -543,7 +542,7 @@ Open-Meteo
         ↓
 Wikipedia
 
-"Cuéntame un chiste"
+"Quién eres"
         ↓
 Local AI
 ```
