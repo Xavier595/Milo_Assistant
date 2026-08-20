@@ -47,8 +47,6 @@ Milo on the main screen while idle.
 IMAGE: docs/images/milo-conversation.png
 
 Recommended example:
-"Milo cuéntame un chiste"
-or
 "Milo quién eres"
 -->
 
