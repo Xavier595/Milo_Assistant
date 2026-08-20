@@ -32,32 +32,32 @@ This prevents the language model from having unrestricted control over the phone
 ### Main interface
 
 <!--
-IMAGE: docs/images/milo-home.png
+IMAGE: docs/images/milo-home.jpeg
 
 Milo on the main screen while idle.
 -->
 
 <p align="center">
-  <img src="docs/images/milo-home.png" width="300" alt="Milo main interface">
+  <img src="docs/images/milo-home.jpeg" width="300" alt="Milo main interface">
 </p>
 
 ### Local conversation
 
 <!--
-IMAGE: docs/images/milo-conversation.png
+IMAGE: docs/images/milo-conversation.jpeg
 
 Recommended example:
 "Milo quién eres"
 -->
 
 <p align="center">
-  <img src="docs/images/milo-conversation.png" width="300" alt="Milo local conversation">
+  <img src="docs/images/milo-conversation.jpeg" width="300" alt="Milo local conversation">
 </p>
 
 ### Wikipedia information
 
 <!--
-IMAGE: docs/images/milo-wikipedia.png
+IMAGE: docs/images/milo-wikipedia.jpeg
 
 Recommended example:
 "Milo dónde está Argelia"
@@ -67,13 +67,13 @@ The screenshot should show:
 -->
 
 <p align="center">
-  <img src="docs/images/milo-wikipedia.png" width="300" alt="Milo Wikipedia lookup">
+  <img src="docs/images/milo-wikipedia.jpeg" width="300" alt="Milo Wikipedia lookup">
 </p>
 
 ### Current weather
 
 <!--
-IMAGE: docs/images/milo-weather.png
+IMAGE: docs/images/milo-weather.jpeg
 
 Recommended example:
 "Milo qué tiempo hace en Madrid"
@@ -83,13 +83,13 @@ precipitation, wind and Open-Meteo attribution.
 -->
 
 <p align="center">
-  <img src="docs/images/milo-weather.png" width="300" alt="Milo weather information">
+  <img src="docs/images/milo-weather.jpeg" width="300" alt="Milo weather information">
 </p>
 
 ### Current news
 
 <!--
-IMAGE: docs/images/milo-news.png
+IMAGE: docs/images/milo-news.jpeg
 
 Recommended example:
 "Milo últimas noticias"
@@ -98,7 +98,7 @@ Show several headlines and their news sources.
 -->
 
 <p align="center">
-  <img src="docs/images/milo-news.png" width="300" alt="Milo current news">
+  <img src="docs/images/milo-news.jpeg" width="300" alt="Milo current news">
 </p>
 
 ---
